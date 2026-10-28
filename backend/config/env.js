@@ -1,7 +1,12 @@
+
 "use strict";
+
 const path = require("path");
+
 if (process.env.NODE_ENV !== "test") {
-  require("dotenv").config({ path: path.resolve(__dirname, "../.env") });
+  require("dotenv").config({
+    path: path.resolve(__dirname, "../.env"),
+  });
 }
 
 // Reads and validates environment variables once, at startup.
@@ -10,20 +15,29 @@ function loadEnv(env = process.env) {
   const nodeEnv = env.NODE_ENV || "development";
   const isProd = nodeEnv === "production";
   const problems = [];
+
   if (!["development", "test", "production"].includes(nodeEnv)) {
     problems.push("NODE_ENV must be development, test, or production.");
   }
 
   const mongoUri = env.MONGODB_URI || "";
   let clientOrigin = "";
+
   if (env.CLIENT_ORIGIN) {
     try {
       const parsedOrigin = new URL(env.CLIENT_ORIGIN);
-      if (!["http:", "https:"].includes(parsedOrigin.protocol) ||
-          parsedOrigin.username || parsedOrigin.password ||
-          (parsedOrigin.pathname !== "/" && parsedOrigin.pathname !== "") ||
-          parsedOrigin.search || parsedOrigin.hash) {
-        problems.push("CLIENT_ORIGIN must be a site origin without a path, query, or credentials.");
+
+      if (
+        !["http:", "https:"].includes(parsedOrigin.protocol) ||
+        parsedOrigin.username ||
+        parsedOrigin.password ||
+        (parsedOrigin.pathname !== "/" && parsedOrigin.pathname !== "") ||
+        parsedOrigin.search ||
+        parsedOrigin.hash
+      ) {
+        problems.push(
+          "CLIENT_ORIGIN must be a site origin without a path, query, or credentials."
+        );
       } else {
         clientOrigin = parsedOrigin.origin;
       }
@@ -31,36 +45,101 @@ function loadEnv(env = process.env) {
       problems.push("CLIENT_ORIGIN must be a valid site origin.");
     }
   }
+
   if (mongoUri) {
     try {
       const parsedMongoUri = new URL(mongoUri);
-      if (!["mongodb:", "mongodb+srv:"].includes(parsedMongoUri.protocol) || !parsedMongoUri.hostname) {
-        problems.push("MONGODB_URI must be a valid mongodb:// or mongodb+srv:// URI.");
+
+      if (
+        !["mongodb:", "mongodb+srv:"].includes(parsedMongoUri.protocol) ||
+        !parsedMongoUri.hostname
+      ) {
+        problems.push(
+          "MONGODB_URI must be a valid mongodb:// or mongodb+srv:// URI."
+        );
       }
     } catch {
-      problems.push("MONGODB_URI must be a valid mongodb:// or mongodb+srv:// URI.");
+      problems.push(
+        "MONGODB_URI must be a valid mongodb:// or mongodb+srv:// URI."
+      );
     }
   }
-  if (!mongoUri) problems.push("MONGODB_URI is required.");
-  if (!clientOrigin) problems.push("CLIENT_ORIGIN is required (e.g. http://localhost:5173).");
-  if (isProd && clientOrigin && !clientOrigin.startsWith("https://"))
+
+  if (!mongoUri) {
+    problems.push("MONGODB_URI is required.");
+  }
+
+  if (!clientOrigin) {
+    problems.push(
+      "CLIENT_ORIGIN is required (e.g. http://localhost:5173)."
+    );
+  }
+
+  if (isProd && clientOrigin && !clientOrigin.startsWith("https://")) {
     problems.push("CLIENT_ORIGIN must use https:// in production.");
+  }
 
   const int = (name, def) => {
-    const v = env[name] === undefined || env[name] === "" ? def : Number(env[name]);
-    if (!Number.isSafeInteger(v) || v <= 0) problems.push(`${name} must be a positive integer.`);
-    return v;
+    const value =
+      env[name] === undefined || env[name] === ""
+        ? def
+        : Number(env[name]);
+
+    if (!Number.isSafeInteger(value) || value <= 0) {
+      problems.push(`${name} must be a positive integer.`);
+    }
+
+    return value;
   };
-  const trustProxy = env.TRUST_PROXY === undefined || env.TRUST_PROXY === "" ? 0 : Number(env.TRUST_PROXY);
+
+  const trustProxy =
+    env.TRUST_PROXY === undefined || env.TRUST_PROXY === ""
+      ? 0
+      : Number(env.TRUST_PROXY);
+
   if (!Number.isSafeInteger(trustProxy) || trustProxy < 0) {
     problems.push("TRUST_PROXY must be a non-negative integer hop count.");
   }
+
   const cookieDomain = env.COOKIE_DOMAIN || undefined;
-  if (cookieDomain && !/^(?:\.)?(?:[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?)(?:\.(?:[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?))*$/i.test(cookieDomain)) {
-    problems.push("COOKIE_DOMAIN must be a hostname, optionally prefixed by a dot.");
+
+  if (
+    cookieDomain &&
+    !/^(?:\.)?(?:[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?)(?:\.[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?)*$/i.test(
+      cookieDomain
+    )
+  ) {
+    problems.push(
+      "COOKIE_DOMAIN must be a hostname, optionally prefixed by a dot."
+    );
   }
-  const smtpSecure = env.SMTP_SECURE === undefined || env.SMTP_SECURE === "" ? true : env.SMTP_SECURE === "true";
-  if (env.SMTP_SECURE !== undefined && env.SMTP_SECURE !== "" && !["true", "false"].includes(env.SMTP_SECURE)) {
+
+  const cookieSameSite = (
+    env.COOKIE_SAME_SITE || "lax"
+  ).toLowerCase();
+
+  if (!["lax", "strict", "none"].includes(cookieSameSite)) {
+    problems.push(
+      "COOKIE_SAME_SITE must be lax, strict, or none."
+    );
+  }
+
+  if (cookieSameSite === "none" && !isProd) {
+    problems.push(
+      "COOKIE_SAME_SITE=none requires production mode."
+    );
+  }
+
+  const smtpSecure =
+    env.SMTP_SECURE === undefined || env.SMTP_SECURE === ""
+      ? true
+      : env.SMTP_SECURE === "true";
+
+  if (
+    env.SMTP_SECURE !== undefined &&
+    env.SMTP_SECURE !== "" &&
+    !["true", "false"].includes(env.SMTP_SECURE)
+  ) {
     problems.push("SMTP_SECURE must be true or false.");
   }
 
@@ -70,26 +149,33 @@ function loadEnv(env = process.env) {
     port: int("PORT", 4000),
     mongoUri,
     clientOrigin,
-    cookieDomain, // e.g. .example.com when site and API share a parent domain
-    trustProxy, // configure only the exact number of trusted proxy hops
+    cookieDomain,
+    cookieSameSite,
+    trustProxy,
+
     sessionIdleMs: int("SESSION_IDLE_MINUTES", 30) * 60 * 1000,
     sessionAbsoluteMs: int("SESSION_ABSOLUTE_HOURS", 8) * 60 * 60 * 1000,
     customerKeyMs: int("CUSTOMER_KEY_DAYS", 7) * 24 * 60 * 60 * 1000,
+
     smtpHost: env.SMTP_HOST || "",
     smtpPort: int("SMTP_PORT", 465),
     smtpSecure,
     smtpUser: env.SMTP_USER || "",
     smtpPass: env.SMTP_PASS || "",
     emailFrom: env.EMAIL_FROM || env.SMTP_USER || "",
-    staffKeyMs: int("STAFF_KEY_HOURS", 48) * 60 * 60 * 1000,
-    authRateMax: int("AUTH_RATE_MAX", 10), // attempts per 15 minutes per IP on login/register
+
+    staffKeyMs: int("STAFF_KEY_HOURS", 48),
+    authRateMax: int("AUTH_RATE_MAX", 10),
     maxFailedLogins: int("MAX_FAILED_LOGINS", 5),
     lockoutMs: int("LOCKOUT_MINUTES", 15) * 60 * 1000,
   };
 
   if (problems.length) {
-    throw new Error("Invalid configuration:\n - " + problems.join("\n - "));
+    throw new Error(
+      "Invalid configuration:\n - " + problems.join("\n - ")
+    );
   }
+
   return cfg;
 }
 
