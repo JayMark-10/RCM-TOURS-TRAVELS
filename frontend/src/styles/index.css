@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: Inter, "Aptos", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+
+  --color-red: #d9364f;
+  --color-red-dark: #bd2940;
+  --color-blue: #1f5faf;
+  --color-blue-dark: #174a88;
+  --color-navy: #0b1f3a;
+  --color-surface: #f6f8fb;
+  --color-mist: #eaf0f6;
+  --color-ink: #15283f;
+  --color-muted: #64748b;
+  --color-line: #dce5ef;
+}

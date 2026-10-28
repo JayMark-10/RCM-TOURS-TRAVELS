@@ -1,0 +1,32 @@
+node_modules
+dist
+dist-ssr
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.local
+
+# Private customer uploads
+backend/private-documents/
+backend/private-receipts/
+
+# Local database files and backups
+/local-backups/
+*.dump
+*.bson
+*.sqlite
+*.sqlite3
+
+
+# Archives and large generated files
+*.zip
+*.7z
+*.rar
+
+# Exclude school document from website assets
+/frontend/public/images/home/Combined_Criteria_System_and_Dashboard.docx
