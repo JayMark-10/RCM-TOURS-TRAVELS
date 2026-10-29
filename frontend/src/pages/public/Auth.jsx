@@ -5,6 +5,12 @@ import { Button, Field, Input, Select } from "../../components/ui"
 import { Logo } from "../../layouts/PublicLayout"
 import { apiRequest } from "../../services/api"
 import { useStore } from "../../lib/store"
+import {
+  FULL_NAME_ERROR,
+  PHILIPPINE_MOBILE_ERROR,
+  isValidFullName,
+  isValidPhilippineMobile,
+} from "../../lib/validation"
 import { HERO_IMAGE } from "../../lib/catalog"
 
 function getDestination(role) {
@@ -171,18 +177,33 @@ export function Register() {
 
   const [accountType, setAccountType] = useState("customer")
   const [error, setError] = useState("")
+  const [phoneInvalid, setPhoneInvalid] = useState(false)
   const [loading, setLoading] = useState(false)
   const [activationRequested, setActivationRequested] = useState(false)
 
   async function handleRegister(event) {
     event.preventDefault()
     setError("")
+    setPhoneInvalid(false)
 
     const formData = new FormData(event.currentTarget)
     const password = formData.get("password")
     const confirmPassword = formData.get("confirm")
     const invitationCode = String(formData.get("key") ?? "").trim()
     const activationCode = String(formData.get("activationToken") ?? "").trim()
+    const name = String(formData.get("name") ?? "")
+    const phone = String(formData.get("phone") ?? "")
+
+    if (accountType !== "claim" && !isValidFullName(name)) {
+      setError(FULL_NAME_ERROR)
+      return
+    }
+
+    if (accountType === "customer" && !isValidPhilippineMobile(phone)) {
+      setError(PHILIPPINE_MOBILE_ERROR)
+      setPhoneInvalid(true)
+      return
+    }
 
     if (password !== confirmPassword) {
       setError("Passwords do not match.")
@@ -220,8 +241,8 @@ export function Register() {
           consent: true,
           ...(accountType !== "claim"
             ? {
-                name: formData.get("name"),
-                phone: formData.get("phone"),
+                name: name.trim(),
+                phone,
               }
             : { activationToken: activationCode }),
           ...(accountType === "staff" ? { key: invitationCode } : {}),
@@ -239,7 +260,9 @@ export function Register() {
         replace: true,
       })
     } catch (requestError) {
-      setError(getErrorMessage(requestError))
+      const message = getErrorMessage(requestError)
+      setError(message)
+      setPhoneInvalid(message === PHILIPPINE_MOBILE_ERROR)
     } finally {
       setLoading(false)
     }
@@ -321,6 +344,7 @@ export function Register() {
               name="name"
               autoComplete="name"
               maxLength={120}
+              title={FULL_NAME_ERROR}
               required
             />
           </Field>
@@ -342,7 +366,17 @@ export function Register() {
                 name="phone"
                 type="tel"
                 autoComplete="tel"
-                maxLength={40}
+                inputMode={accountType === "customer" ? "numeric" : undefined}
+                aria-invalid={accountType === "customer" && phoneInvalid}
+                title={accountType === "customer" ? PHILIPPINE_MOBILE_ERROR : undefined}
+                onChange={(event) => {
+                  if (phoneInvalid) {
+                    setPhoneInvalid(
+                      accountType === "customer" &&
+                        !isValidPhilippineMobile(event.target.value)
+                    )
+                  }
+                }}
               />
             </Field>
           )}

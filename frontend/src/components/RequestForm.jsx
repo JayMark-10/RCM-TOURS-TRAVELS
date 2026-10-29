@@ -1,6 +1,12 @@
 import { CheckCircle2 } from "lucide-react"
 import { useRef, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
+import {
+  FULL_NAME_ERROR,
+  PHILIPPINE_MOBILE_ERROR,
+  isValidFullName,
+  isValidPhilippineMobile,
+} from "../lib/validation"
 
 import { useStore } from "../lib/store"
 
@@ -188,7 +194,15 @@ export function RequestForm({ mode }) {
 
     if (mode === "offline") {
       if (creating) {
-        if (!newCust.name.trim() || !newCust.email.trim()) {
+        if (!isValidFullName(newCust.name)) {
+          setSubmitError(FULL_NAME_ERROR)
+          return
+        }
+        if (newCust.phone !== "" && !isValidPhilippineMobile(newCust.phone)) {
+          setSubmitError(PHILIPPINE_MOBILE_ERROR)
+          return
+        }
+        if (!newCust.email.trim()) {
           setSubmitError("Enter the customer's name and email address.")
           return
         }
@@ -196,6 +210,17 @@ export function RequestForm({ mode }) {
         customerId = picked
       } else {
         setSubmitError("Look up an active customer or add a new customer first.")
+        return
+      }
+    }
+
+    if (mode === "customer") {
+      if (!isValidFullName(cName)) {
+        setSubmitError(FULL_NAME_ERROR)
+        return
+      }
+      if (!isValidPhilippineMobile(cPhone, { required: true })) {
+        setSubmitError(PHILIPPINE_MOBILE_ERROR)
         return
       }
     }
@@ -234,13 +259,15 @@ export function RequestForm({ mode }) {
 
     try {
       if (mode === "customer") {
-        await updateProfile({ name: cName, email: cEmail, phone: cPhone })
+        await updateProfile({ name: cName.trim(), email: cEmail, phone: cPhone })
       }
 
       // Wait for the saved request before showing the completion screen.
       const request = await submitRequest({
         customerId: mode === "offline" && !creating ? customerId : undefined,
-        customer: mode === "offline" && creating ? newCust : undefined,
+        customer: mode === "offline" && creating
+          ? { ...newCust, name: newCust.name.trim() }
+          : undefined,
         serviceId: service.id,
         source: source,
         details: cleanedDetails,
@@ -430,6 +457,8 @@ export function RequestForm({ mode }) {
               <Field label="Full name">
                 <Input
                   value={newCust.name}
+                  maxLength={120}
+                  title={FULL_NAME_ERROR}
                   onChange={(event) =>
                     handleNewCustomerChange("name", event.target.value)
                   }
@@ -448,6 +477,9 @@ export function RequestForm({ mode }) {
 
               <Field label="Phone">
                 <Input
+                  type="tel"
+                  inputMode="numeric"
+                  title={PHILIPPINE_MOBILE_ERROR}
                   value={newCust.phone}
                   onChange={(event) =>
                     handleNewCustomerChange("phone", event.target.value)
@@ -511,6 +543,8 @@ export function RequestForm({ mode }) {
             <Field label="Full name">
               <Input
                 required
+                maxLength={120}
+                title={FULL_NAME_ERROR}
                 value={cName}
                 onChange={(event) => setCName(event.target.value)}
               />
@@ -528,6 +562,9 @@ export function RequestForm({ mode }) {
             <Field label="Mobile number">
               <Input
                 required
+                type="tel"
+                inputMode="numeric"
+                title={PHILIPPINE_MOBILE_ERROR}
                 value={cPhone}
                 onChange={(event) => setCPhone(event.target.value)}
               />

@@ -343,40 +343,22 @@ function register(cfg) {
       return res.status(200).json({ user: user.toPublic() });
     }
 
-    const name = v.text(b.name, "name", {
+    const name = v.fullName(b.name, "name", {
       max: 120,
-      label: "Name",
+      label: "Full name",
     });
-    const phone =
-      b.phone === undefined || b.phone === ""
-        ? ""
-        : v.text(b.phone, "phone", {
-            max: 40,
-            label: "Phone",
-          });
 
-    if (!b.key) {
-      const settings = await SystemSetting.findOne({ key: "global" }).select("allowRegistration").lean();
-      if (settings?.allowRegistration === false) {
-        throw new AppError(403, "New customer registration is currently closed.");
-      }
-    }
-
-    // Public registration always creates customer accounts.
-    // Client-supplied role, active, and canAssign values are ignored.
-    let role = "customer";
-    let claimedInvitation = null;
-
-    // Invitation keys are optional and reserved for Staff accounts.
-    // Customer registration never requires an invitation key.
-    if (b.key !== undefined && b.key !== "") {
+    // Only a currently valid Staff invitation permits the Staff phone rules.
+    // Falsy or absent keys are customer registrations; invalid keys are
+    // rejected rather than falling back to customer registration.
+    let invitation = null;
+    if (b.key) {
       const key = v.text(b.key, "key", {
         max: 100,
         label: "Invitation key",
       });
-
       const keyHash = hashToken(key);
-      const invitation = await Invitation.findOne({ keyHash });
+      invitation = await Invitation.findOne({ keyHash });
 
       if (
         !invitation ||
@@ -392,12 +374,33 @@ function register(cfg) {
           detail: "invalid staff invitation or email mismatch",
         });
 
-        throw new AppError(
-          400,
-          "This Staff invitation is not valid."
-        );
+        throw new AppError(400, "This Staff invitation is not valid.");
       }
+    }
 
+    const isStaffRegistration = Boolean(invitation);
+    const phone =
+      b.phone === undefined || b.phone === ""
+        ? ""
+        : isStaffRegistration
+          ? v.text(b.phone, "phone", { max: 40, label: "Phone" })
+          : v.philippineMobile(b.phone, "phone");
+
+    if (!isStaffRegistration) {
+      const settings = await SystemSetting.findOne({ key: "global" }).select("allowRegistration").lean();
+      if (settings?.allowRegistration === false) {
+        throw new AppError(403, "New customer registration is currently closed.");
+      }
+    }
+
+    // Public registration always creates customer accounts.
+    // Client-supplied role, active, and canAssign values are ignored.
+    let role = "customer";
+    let claimedInvitation = null;
+
+    // Invitation keys are optional and reserved for Staff accounts.
+    // Customer registration never requires an invitation key.
+    if (isStaffRegistration) {
       // Redeem the invitation atomically so it cannot be used twice.
       claimedInvitation = await Invitation.findOneAndUpdate(
         {

@@ -47,6 +47,7 @@ async function makeUser(overrides = {}) {
     email: "t@x.co",
     passwordHash: await bcrypt.hash(PW, 4),
     role: "customer",
+    phone: "09171234567",
     ...overrides,
   });
 }
@@ -468,6 +469,14 @@ test(
       400
     );
 
+    const invalidKeyEmail = "invalid-key-phone@x.co";
+    const invalidKeyAndPhone = await reg(client(srv.url), "not-a-key", {
+      email: invalidKeyEmail,
+      phone: "+639171234567",
+    });
+    assert.equal(invalidKeyAndPhone.status, 400);
+    assert.equal(await User.exists({ email: invalidKeyEmail }), null);
+
     const bound = await issue("staff", "bound@x.co");
 
     assert.equal(
@@ -498,6 +507,8 @@ test(
     const customerClient = client(srv.url);
     const customer = await reg(customerClient, undefined, {
       email: "public@x.co",
+      name: "  José Dela Peña  ",
+      phone: "09171234567",
       role: "admin",
       active: false,
       canAssign: true,
@@ -506,6 +517,8 @@ test(
     assert.equal(customer.status, 201);
     assert.ok(customer.cookie);
     assert.equal(customer.json.user.role, "customer");
+    assert.equal(customer.json.user.name, "José Dela Peña");
+    assert.equal(customer.json.user.phone, "09171234567");
     assert.equal((await customerClient.call("GET", "/api/auth/me")).status, 200);
 
     const publicUser = await User.findOne({ email: "public@x.co" });
@@ -763,6 +776,47 @@ async function customerWithRequest(email, description) {
 
   return { c, request: created.json.request };
 }
+
+test("online request API rejects customers with missing or invalid stored names and phones", { skip }, async () => {
+  const user = await makeUser({ email: "request-validation@x.co" });
+  const customer = client(srv.url);
+  assert.equal((await login(customer, "request-validation@x.co")).status, 200);
+
+  const cases = [
+    { name: null, phone: "09171234567", error: /full name/i },
+    { name: "Juan😀", phone: "09171234567", error: /full name/i },
+    { name: "Juan Dela Cruz", phone: null, error: /11-digit Philippine mobile/i },
+    { name: "Juan Dela Cruz", phone: "+639171234567", error: /11-digit Philippine mobile/i },
+  ];
+
+  for (const [index, item] of cases.entries()) {
+    const set = {};
+    const unset = {};
+    if (item.name === null) unset.name = 1;
+    else set.name = item.name;
+    if (item.phone === null) unset.phone = 1;
+    else set.phone = item.phone;
+    await User.collection.updateOne(
+      { _id: user._id },
+      { ...(Object.keys(set).length ? { $set: set } : {}), ...(Object.keys(unset).length ? { $unset: unset } : {}) },
+    );
+
+    const response = await customer.call("POST", "/api/requests", {
+      serviceId: "flight",
+      details: {
+        trip: "Round trip",
+        origin: "Manila",
+        destination: "Cebu",
+        passengers: "1",
+        cabin: "Economy",
+      },
+      description: `Validation case ${index}`,
+    });
+    assert.equal(response.status, 400);
+    assert.match(response.json.error, item.error);
+    assert.equal(await Request.countDocuments({ customerId: user._id }), 0);
+  }
+});
 
 // 11. Access rules for GET /api/requests/:id.
 test(
@@ -1683,7 +1737,7 @@ test(
     const created = await staff.call("POST", "/api/requests", {
       serviceId: "hotel",
       source: "Phone",
-      customer: { name: "Walk In", email: "walk-in@x.co", phone: "12345" },
+      customer: { name: "Walk In", email: "walk-in@x.co", phone: "09171234567" },
       description: "Two-night stay",
       details: { destination: "Cebu", guests: "2", rooms: "1", stay: "Hotel" },
       checklist: [],
@@ -1698,14 +1752,40 @@ test(
     );
     assert.equal(await Request.countDocuments({ customerId: created.json.request.customerId }), 1);
 
+    const invalidName = await staff.call("POST", "/api/requests", {
+      serviceId: "hotel",
+      source: "Phone",
+      customer: { name: "Walk In😀", email: "invalid-name@x.co", phone: "09171234567" },
+      description: "Two-night stay",
+      details: { destination: "Cebu", guests: "2", rooms: "1", stay: "Hotel" },
+      checklist: [],
+    });
+    assert.equal(invalidName.status, 400);
+    assert.match(invalidName.json.error, /full name/i);
+
+    const invalidPhone = await staff.call("POST", "/api/requests", {
+      serviceId: "hotel",
+      source: "Phone",
+      customer: { name: "José Dela Peña", email: "invalid-phone@x.co", phone: "+639171234567" },
+      description: "Two-night stay",
+      details: { destination: "Cebu", guests: "2", rooms: "1", stay: "Hotel" },
+      checklist: [],
+    });
+    assert.equal(invalidPhone.status, 400);
+    assert.match(invalidPhone.json.error, /11-digit Philippine mobile/i);
+
     await makeUser({ email: "profile-customer@x.co" });
     const customer = client(srv.url);
     await login(customer, "profile-customer@x.co");
-    const profile = await customer.call("PATCH", "/api/users/me", { name: "Walk In Updated", phone: "54321" });
+    const invalidProfile = await customer.call("PATCH", "/api/users/me", { name: "Juan123" });
+    assert.equal(invalidProfile.status, 400);
+    const invalidProfilePhone = await customer.call("PATCH", "/api/users/me", { phone: "091712345678" });
+    assert.equal(invalidProfilePhone.status, 400);
+    const profile = await customer.call("PATCH", "/api/users/me", { name: "José Walk In Updated", phone: "09171234567" });
     assert.equal(profile.status, 200);
-    assert.equal(profile.json.user.name, "Walk In Updated");
+    assert.equal(profile.json.user.name, "José Walk In Updated");
     const profileUser = await User.findOne({ email: "profile-customer@x.co" });
-    assert.equal(profileUser.phone, "54321");
+    assert.equal(profileUser.phone, "09171234567");
     assert.equal((await customer.call("PATCH", "/api/users/me", { role: "admin" })).status, 400);
     assert.equal(profileUser.role, "customer");
     assert.equal((await customer.call("GET", "/api/users")).status, 403);

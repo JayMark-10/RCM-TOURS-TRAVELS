@@ -2,6 +2,8 @@
 const AppError = require("./AppError");
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const FULL_NAME_RE = /^\p{L}[\p{L}\p{M}]*(?:(?: +|[-'’])\p{L}[\p{L}\p{M}]*)*$/u;
+const PHILIPPINE_MOBILE_RE = /^09[0-9]{9}$/;
 
 function fail(field, message) {
   throw new AppError(400, message, { [field]: message });
@@ -20,6 +22,22 @@ function email(value, field = "email") {
   const v = text(value, field, { max: 254, label: "Email" }).toLowerCase();
   if (!EMAIL_RE.test(v)) fail(field, "Enter a valid email address.");
   return v;
+}
+
+function fullName(value, field = "name", { max = 120, label = "Full name" } = {}) {
+  const name = text(value, field, { max, label });
+  if (!FULL_NAME_RE.test(name)) {
+    fail(field, "Enter a valid full name using letters, spaces, hyphens, or apostrophes.");
+  }
+  return name;
+}
+
+function philippineMobile(value, field = "phone", { optional = false, label = "Mobile number" } = {}) {
+  if (optional && value === "") return "";
+  if (typeof value !== "string" || !PHILIPPINE_MOBILE_RE.test(value)) {
+    fail(field, "Enter an 11-digit Philippine mobile number starting with 09 (for example, 09171234567).");
+  }
+  return value;
 }
 
 // bcrypt only uses the first 72 bytes, so longer passwords are refused rather than silently truncated.
@@ -41,4 +59,4 @@ function body(req) {
   return b;
 }
 
-module.exports = { text, email, newPassword, oneOf, body };
+module.exports = { text, email, fullName, philippineMobile, newPassword, oneOf, body };

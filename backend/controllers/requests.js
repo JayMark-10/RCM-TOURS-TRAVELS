@@ -381,6 +381,11 @@ async function createRequest(req, res) {
   const documents = readStringArray(b.documents, "documents");
   const checklist = readChecklist(b.checklist, service.documents || [], req.user.role !== "customer");
 
+  if (req.user.role === "customer") {
+    v.fullName(req.user.name, "name", { max: 120, label: "Full name" });
+    v.philippineMobile(req.user.phone, "phone");
+  }
+
   if (b.source !== undefined && !["Online", "Walk-in", "Phone"].includes(b.source)) {
     throw new AppError(400, "Invalid request source.");
   }
@@ -400,9 +405,11 @@ async function createRequest(req, res) {
       if (!b.customer || typeof b.customer !== "object" || Array.isArray(b.customer)) {
         throw new AppError(400, "Customer information is required.");
       }
-      const name = v.text(b.customer.name, "customer.name", { max: 120, label: "Customer name" });
+      const name = v.fullName(b.customer.name, "customer.name", { max: 120, label: "Customer name" });
       const email = v.email(b.customer.email, "customer.email");
-      const phone = b.customer.phone ? v.text(b.customer.phone, "customer.phone", { max: 40, label: "Phone" }) : "";
+      const phone = b.customer.phone === undefined || b.customer.phone === ""
+        ? ""
+        : v.philippineMobile(b.customer.phone, "customer.phone");
       newCustomer = { _id: new mongoose.Types.ObjectId(), name, email, phone, role: "customer", passwordHash: null };
       customerId = newCustomer._id;
     }

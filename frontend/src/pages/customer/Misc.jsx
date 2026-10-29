@@ -13,6 +13,12 @@ import {
 import { useStore } from "../../lib/store"
 import { REQUEST_IMAGE } from "../../lib/catalog"
 import { fmtDateTime } from "../../utils/workflow"
+import {
+  FULL_NAME_ERROR,
+  PHILIPPINE_MOBILE_ERROR,
+  isValidFullName,
+  isValidPhilippineMobile,
+} from "../../lib/validation"
 export function NewRequest() {
   return (
     <>
@@ -104,10 +110,18 @@ export function Profile() {
 
   async function handleSubmit(event) {
     event.preventDefault()
-    setSaving(true)
     setError("")
+    if (!isValidFullName(name)) {
+      setError(FULL_NAME_ERROR)
+      return
+    }
+    if (!isValidPhilippineMobile(phone)) {
+      setError(PHILIPPINE_MOBILE_ERROR)
+      return
+    }
+    setSaving(true)
     try {
-      await updateProfile({ name, email, phone })
+      await updateProfile({ name: name.trim(), email, phone })
       notify("Profile saved.")
     } catch (saveError) {
       setError(saveError.message || "Unable to save profile changes.")
@@ -128,13 +142,13 @@ export function Profile() {
           onSubmit={handleSubmit}
         >
           <Field label="Full name">
-            <Input required maxLength={120} value={name} onChange={(event) => setName(event.target.value)} />
+            <Input required maxLength={120} title={FULL_NAME_ERROR} value={name} onChange={(event) => setName(event.target.value)} />
           </Field>
           <Field label="Email">
             <Input required type="email" maxLength={254} value={email} onChange={(event) => setEmail(event.target.value)} />
           </Field>
           <Field label="Mobile number">
-            <Input maxLength={40} value={phone} onChange={(event) => setPhone(event.target.value)} />
+            <Input type="tel" inputMode="numeric" title={PHILIPPINE_MOBILE_ERROR} value={phone} onChange={(event) => setPhone(event.target.value)} />
           </Field>
           {error && <p className="sm:col-span-2 text-sm text-red-700" role="alert">{error}</p>}
           <div className="sm:col-span-2">

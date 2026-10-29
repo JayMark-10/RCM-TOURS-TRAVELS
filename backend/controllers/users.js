@@ -40,9 +40,15 @@ async function updateProfile(req, res) {
   }
 
   const fields = {};
-  if (body.name !== undefined) fields.name = v.text(body.name, "name", { max: 120, label: "Name" });
+  if (body.name !== undefined) fields.name = v.fullName(body.name, "name", { max: 120, label: "Full name" });
   if (body.email !== undefined) fields.email = v.email(body.email);
-  if (body.phone !== undefined) fields.phone = body.phone === "" ? "" : v.text(body.phone, "phone", { max: 40, label: "Phone" });
+  if (body.phone !== undefined) {
+    fields.phone = body.phone === ""
+      ? ""
+      : req.user.role === "customer"
+        ? v.philippineMobile(body.phone, "phone")
+        : v.text(body.phone, "phone", { max: 40, label: "Phone" });
+  }
 
   try {
     const user = await User.findByIdAndUpdate(req.user._id, { $set: fields }, { new: true, runValidators: true });

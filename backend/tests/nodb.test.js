@@ -360,6 +360,43 @@ test("registration rejects weak password and missing consent before touching the
   assert.equal(missingConsent.status, 400);
 });
 
+test("registration API rejects invalid full names and Philippine mobile numbers before database access", async () => {
+  const base = {
+    email: "validation@example.com",
+    password: "longenoughpass",
+    consent: true,
+  };
+
+  for (const name of ["Juan123", "Juan😀", "12345"]) {
+    const response = await c.call("POST", "/api/auth/register", {
+      ...base,
+      name,
+      phone: "09171234567",
+    });
+    assert.equal(response.status, 400, name);
+    assert.match(response.json.error, /full name/i);
+  }
+
+  const unicodeName = await c.call("POST", "/api/auth/register", {
+    ...base,
+    name: "  José D’Arcy  ",
+    phone: "+639171234567",
+  });
+  assert.equal(unicodeName.status, 400);
+  assert.match(unicodeName.json.error, /11-digit Philippine mobile/i);
+
+  for (const key of [undefined, null, "", false, 0]) {
+    const response = await c.call("POST", "/api/auth/register", {
+      ...base,
+      ...(key === undefined ? {} : { key }),
+      name: "Juan Dela Cruz",
+      phone: "+639171234567",
+    });
+    assert.equal(response.status, 400, `key=${String(key)}`);
+    assert.match(response.json.error, /11-digit Philippine mobile/i);
+  }
+});
+
 test("protected routes return 401 without a session cookie", async () => {
   const routes = [
     ["GET", "/api/auth/me"],
@@ -565,4 +602,19 @@ test("startup rejects MongoDB topologies without transaction support", () => {
   assert.throws(() => assertTransactionTopology("Single"), {
     code: "MONGO_TRANSACTIONS_REQUIRED",
   });
+});
+
+test("full-name and Philippine mobile validators enforce accepted formats", () => {
+  for (const name of ["Juan Dela Cruz", "Mary-Jane O'Connor", "José Dela Peña", "D’Arcy Santos"]) {
+    assert.equal(v.fullName(` ${name} `), name);
+  }
+  for (const name of ["", "Juan123", "Juan😀", "12345", "Juan_Santos"]) {
+    assert.throws(() => v.fullName(name), /full name/i);
+  }
+
+  assert.equal(v.philippineMobile("09171234567"), "09171234567");
+  for (const phone of ["0917123456", "091712345678", "0917ABC4567", "+639171234567", "0917 123 4567"]) {
+    assert.throws(() => v.philippineMobile(phone), /11-digit Philippine mobile/i);
+  }
+  assert.equal(v.philippineMobile("", "phone", { optional: true }), "");
 });
