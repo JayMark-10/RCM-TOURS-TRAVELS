@@ -1,8 +1,10 @@
 import { Menu, Plane, X } from "lucide-react"
 import { useEffect, useState } from "react"
-import { Link, NavLink, Outlet, useLocation } from "react-router-dom"
+import { Link, Outlet, useLocation } from "react-router-dom"
 import { ButtonLink } from "../components/ui"
+import { RouteTransition } from "../components/RouteTransition"
 import { useStore } from "../lib/store"
+import { useSlidingNavIndicator } from "../hooks/useSlidingNavIndicator"
 export function Logo({ dark }) {
   const [imageFailed, setImageFailed] = useState(false)
   return (
@@ -39,6 +41,7 @@ export function PublicLayout() {
   const { user } = useStore()
   const { hash, pathname } = useLocation()
   const isHome = pathname === "/"
+  useSlidingNavIndicator("public-primary", `${pathname}${hash}`)
 
   useEffect(() => {
     setOpen(false)
@@ -79,20 +82,28 @@ export function PublicLayout() {
           <Logo dark={isHome && !scrolled} />
           <nav
             aria-label="Primary navigation"
-            className="hidden items-center gap-0.5 rounded-full border border-white/70 bg-white/85 p-1 shadow-[0_8px_28px_rgba(11,31,58,.12)] backdrop-blur-xl transition-[background-color,box-shadow] duration-300 ease-[cubic-bezier(.2,.7,.2,1)] lg:flex"
+            data-sliding-nav="public-primary"
+            className="relative hidden items-center gap-0.5 rounded-full border border-white/70 bg-white/85 p-1 shadow-[0_8px_28px_rgba(11,31,58,.12)] backdrop-blur-xl transition-[background-color,box-shadow] duration-300 ease-[cubic-bezier(.2,.7,.2,1)] lg:flex"
           >
+            <span
+              aria-hidden="true"
+              data-active-indicator
+              className="nav-active-indicator absolute left-0 top-0 z-0 rounded-full bg-blue shadow-[0_4px_12px_rgba(31,95,175,.22)]"
+            />
             {links.map(([l, to]) => (
-              <NavLink
+              <Link
                 key={l}
                 to={to}
-                className={`rounded-full px-3 py-2.5 text-[13px] font-semibold transition-[background-color,color,box-shadow] duration-200 ease-[cubic-bezier(.2,.7,.2,1)] sm:px-3.5 ${
+                aria-current={active(to) ? "page" : undefined}
+                data-active-nav-link={active(to) ? "true" : undefined}
+                className={`relative z-10 rounded-full px-3 py-2.5 text-[13px] font-semibold transition-colors duration-200 ease-[cubic-bezier(.2,.7,.2,1)] sm:px-3.5 ${
                   active(to)
-                    ? "bg-blue text-white shadow-[0_4px_12px_rgba(31,95,175,.22)]"
+                    ? "text-white"
                     : "text-ink hover:bg-white hover:text-blue"
                 }`}
               >
                 {l}
-              </NavLink>
+              </Link>
             ))}
           </nav>
           <div className="hidden items-center gap-1.5 lg:flex">
@@ -158,7 +169,9 @@ export function PublicLayout() {
           </div>
         )}
       </header>
-      <Outlet />
+      <RouteTransition>
+        <Outlet />
+      </RouteTransition>
     </div>
   )
 }

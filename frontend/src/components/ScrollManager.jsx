@@ -6,8 +6,13 @@ function ScrollManager() {
   const { pathname, hash } = useLocation()
 
   useEffect(() => {
+    const reduceMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches
+    const behavior = reduceMotion ? "auto" : "smooth"
+
     if (hash === "") {
-      window.scrollTo(0, 0)
+      window.scrollTo({ top: 0, behavior })
       return
     }
 
@@ -15,7 +20,7 @@ function ScrollManager() {
     const timer = window.setTimeout(() => {
       const section = document.getElementById(hash.slice(1))
       if (section) {
-        section.scrollIntoView({ behavior: "smooth" })
+        section.scrollIntoView({ behavior })
       }
     }, 0)
 

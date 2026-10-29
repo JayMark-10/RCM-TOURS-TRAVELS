@@ -1,15 +1,22 @@
 import { Menu, X } from "lucide-react"
 import { useState } from "react"
-import { Navigate, NavLink, Outlet, useNavigate } from "react-router-dom"
+import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom"
 import { Logo } from "./PublicLayout"
 import { AuthConnectionError } from "./AuthConnectionError"
 import { useStore } from "../lib/store"
 import { LogoutButton } from "../components/LogoutButton"
+import { RouteTransition } from "../components/RouteTransition"
+import { useSlidingNavIndicator } from "../hooks/useSlidingNavIndicator"
 
 export function DashboardShell({ role, title, items }) {
+  const { pathname } = useLocation()
   const { user, authLoading, authError, retryAuth } = useStore()
   const [open, setOpen] = useState(false)
   const nav = useNavigate()
+  useSlidingNavIndicator(
+    `${role}-sidebar`,
+    `${pathname}:${open}:${authLoading}:${user?.id ?? ""}`,
+  )
 
   // Wait until the backend session check finishes.
   if (authLoading) {
@@ -83,7 +90,16 @@ export function DashboardShell({ role, title, items }) {
         {title}
       </p>
 
-      <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-3 pb-4">
+      <nav
+        data-sliding-nav={`${role}-sidebar`}
+        data-indicator-axis="vertical"
+        className="relative min-h-0 flex-1 space-y-0.5 overflow-y-auto px-3 pb-4"
+      >
+        <span
+          aria-hidden="true"
+          data-active-indicator
+          className="nav-active-indicator absolute left-3 right-3 top-0 z-0 rounded-lg bg-white/10 [background-image:linear-gradient(#D9364F,#D9364F)] [background-position:left_center] [background-repeat:no-repeat] [background-size:3px_100%]"
+        />
         {items.map((i) => (
           <NavLink
             key={i.to}
@@ -91,9 +107,9 @@ export function DashboardShell({ role, title, items }) {
             end={i.end}
             onClick={() => setOpen(false)}
             className={({ isActive }) =>
-              `flex min-w-0 items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition-[background-color,color,box-shadow] duration-200 ease-[cubic-bezier(.2,.7,.2,1)] ${
+              `relative z-10 flex min-w-0 items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition-colors duration-200 ease-[cubic-bezier(.2,.7,.2,1)] ${
                 isActive
-                  ? "bg-white/10 text-white shadow-[inset_3px_0_0_#D9364F]"
+                  ? "text-white"
                   : "hover:bg-white/5 hover:text-white"
               }`
             }
@@ -168,7 +184,9 @@ export function DashboardShell({ role, title, items }) {
       </header>
 
       <main className="mx-auto w-full min-w-0 max-w-[1440px] px-4 py-7 sm:px-7 xl:px-9 xl:py-9">
-        <Outlet />
+        <RouteTransition>
+          <Outlet />
+        </RouteTransition>
       </main>
     </div>
   )

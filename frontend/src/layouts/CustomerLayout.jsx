@@ -5,15 +5,22 @@ import {
   ListChecks,
   UserRound,
 } from "lucide-react"
-import { Navigate, NavLink, Outlet } from "react-router-dom"
+import { Navigate, NavLink, Outlet, useLocation } from "react-router-dom"
 import { Logo } from "./PublicLayout"
 import { AuthConnectionError } from "./AuthConnectionError"
 import { useStore } from "../lib/store"
 import { LogoutButton } from "../components/LogoutButton"
+import { RouteTransition } from "../components/RouteTransition"
+import { useSlidingNavIndicator } from "../hooks/useSlidingNavIndicator"
 
 export function CustomerLayout() {
+  const { pathname } = useLocation()
   const { user, authLoading, authError, retryAuth, notifications } =
     useStore()
+  useSlidingNavIndicator(
+    "customer-primary",
+    `${pathname}:${authLoading}:${user?.id ?? ""}`,
+  )
 
   // Wait until the backend session check finishes.
   if (authLoading) {
@@ -68,16 +75,21 @@ export function CustomerLayout() {
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-2 px-3 sm:gap-4 sm:px-5">
           <Logo />
 
-          <nav className="hidden items-center gap-1 md:flex">
+          <nav data-sliding-nav="customer-primary" className="relative hidden items-center gap-1 md:flex">
+            <span
+              aria-hidden="true"
+              data-active-indicator
+              className="nav-active-indicator absolute left-0 top-0 z-0 rounded-full bg-blue/10 shadow-[inset_0_-2px_0_#1f5faf]"
+            />
             {items.map((i) => (
               <NavLink
                 key={i.to}
                 to={i.to}
                 end={i.end}
                 className={({ isActive }) =>
-                  `relative flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium transition-[background-color,color,box-shadow] duration-200 ${
+                  `relative z-10 flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium transition-colors duration-200 ${
                     isActive
-                      ? "bg-blue/10 text-blue shadow-[inset_0_-2px_0_#1f5faf]"
+                      ? "text-blue"
                       : "text-muted hover:text-ink"
                   }`
                 }
@@ -105,7 +117,9 @@ export function CustomerLayout() {
       </header>
 
       <main className="mx-auto w-full min-w-0 max-w-6xl px-4 py-7 sm:px-6 sm:py-9">
-        <Outlet />
+        <RouteTransition>
+          <Outlet />
+        </RouteTransition>
       </main>
 
       <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-white/80 bg-white/86 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_30px_rgba(11,31,58,.09)] backdrop-blur-2xl md:hidden">
