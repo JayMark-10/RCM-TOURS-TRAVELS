@@ -41,7 +41,7 @@ export function PublicLayout() {
   const { user } = useStore()
   const { hash, pathname } = useLocation()
   const isHome = pathname === "/"
-  useSlidingNavIndicator("public-primary", `${pathname}${hash}`)
+  useSlidingNavIndicator("public-primary", `${pathname}${hash}:${open}`)
 
   useEffect(() => {
     setOpen(false)
@@ -135,14 +135,20 @@ export function PublicLayout() {
         </div>
         {open && (
           <div className="animate-[public-menu-enter_180ms_cubic-bezier(.2,.7,.2,1)_both] border-t border-line/70 bg-white/95 px-4 py-3 shadow-[0_16px_30px_rgba(11,31,58,.1)] backdrop-blur-2xl lg:hidden">
-            <nav aria-label="Mobile navigation" className="mx-auto max-w-7xl space-y-1">
+            <nav aria-label="Mobile navigation" data-sliding-nav="public-primary" className="relative mx-auto max-w-7xl space-y-1">
+              <span
+                aria-hidden="true"
+                data-active-indicator
+                className="nav-active-indicator absolute left-0 top-0 z-0 rounded-xl bg-blue/10"
+              />
               {links.map(([l, to]) => (
                 <Link
                   key={l}
                   to={to}
                   onClick={() => setOpen(false)}
-                  className={`block rounded-xl px-3 py-3 text-sm font-semibold transition-[background-color,color] duration-200 ${
-                    active(to) ? "bg-blue/10 text-blue" : "text-ink hover:bg-slate-50"
+                  data-active-nav-link={active(to) ? "true" : undefined}
+                  className={`relative z-10 block rounded-xl px-3 py-3 text-sm font-semibold transition-[background-color,color] duration-200 ${
+                    active(to) ? "text-blue" : "text-ink hover:bg-slate-50"
                   }`}
                 >
                   {l}

@@ -122,14 +122,19 @@ export function CustomerLayout() {
         </RouteTransition>
       </main>
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-white/80 bg-white/86 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_30px_rgba(11,31,58,.09)] backdrop-blur-2xl md:hidden">
+      <nav data-sliding-nav="customer-primary" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-white/80 bg-white/86 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_30px_rgba(11,31,58,.09)] backdrop-blur-2xl md:hidden">
+        <span
+          aria-hidden="true"
+          data-active-indicator
+          className="nav-active-indicator absolute left-0 top-0 z-0 bg-blue/10 shadow-[inset_0_2px_0_#1f5faf]"
+        />
         {items.map((i) => (
           <NavLink
             key={i.to}
             to={i.to}
             end={i.end}
             className={({ isActive }) =>
-              `relative flex min-w-0 flex-col items-center gap-0.5 py-2.5 text-[9px] font-medium transition-colors duration-200 sm:text-[10px] ${
+              `relative z-10 flex min-w-0 flex-col items-center gap-0.5 py-2.5 text-[9px] font-medium transition-colors duration-200 sm:text-[10px] ${
                 isActive ? "text-blue" : "text-muted"
               }`
             }
