@@ -6,10 +6,10 @@ import { RouteTransition } from "../components/RouteTransition"
 import { useStore } from "../lib/store"
 import { getHomeDestination } from "../lib/navigation"
 import { useSlidingNavIndicator } from "../hooks/useSlidingNavIndicator"
-export function Logo({ dark, to = "/" }) {
+export function Logo({ dark, to = "/", onClick }) {
   const [imageFailed, setImageFailed] = useState(false)
   return (
-    <Link to={to} className="group flex items-center gap-3" aria-label="RCM Travel and Tours home">
+    <Link to={to} onClick={onClick} className="group flex items-center gap-3" aria-label="RCM Travel and Tours home">
       <span className="relative grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-xl bg-navy shadow-sm ring-1 ring-navy/10">
         {!imageFailed && <img src="/images/home/logo.jfif" alt="" className="absolute inset-0 h-full w-full object-cover" onError={() => setImageFailed(true)} />}
         {imageFailed && <span className="grid h-full w-full place-items-center bg-red text-white"><Plane size={20} /></span>}

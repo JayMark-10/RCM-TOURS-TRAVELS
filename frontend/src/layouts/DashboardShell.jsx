@@ -76,7 +76,7 @@ export function DashboardShell({ role, title, items }) {
   const sidebar = (
       <div className="flex h-full flex-col bg-gradient-to-b from-navy via-[#0d294b] to-[#0b1f3a] text-slate-300">
       <div className="flex h-[76px] items-center justify-between border-b border-white/10 px-5">
-        <Logo dark to={getHomeDestination(role)} />
+        <Logo dark to={getHomeDestination(role)} onClick={() => setOpen(false)} />
 
         <button
           className="grid h-11 w-11 place-items-center rounded-xl text-slate-200 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white xl:hidden"
