@@ -74,7 +74,15 @@ test("payment money uses cents, clamps zero balances, and deduplicates verified 
 });
 
 test("customer payment balance ignores pending/rejected reports and handles paid and rounded totals", async () => {
-  const { centsToMoney: uiCentsToMoney, moneyToCents: uiMoneyToCents, paymentBalance } =
+  const {
+    centsToMoney: uiCentsToMoney,
+    moneyToCents: uiMoneyToCents,
+    paymentBalance,
+    quotationPaymentSummaries,
+    combinedPaymentBalance,
+    formatPaymentDate,
+    formatReviewedAt,
+  } =
     await import("../../frontend/src/utils/paymentMoney.js");
   const quotation = { items: [{ amount: 124.99 }, { amount: 125.01 }] };
   const initial = paymentBalance(quotation, []);
@@ -87,6 +95,35 @@ test("customer payment balance ignores pending/rejected reports and handles paid
   assert.equal(uiMoneyToCents(1.005), 101);
   assert.equal(uiCentsToMoney(0), 0);
   assert.equal(paymentBalance({ items: [{ amount: 0 }] }, []).outstandingCents, 0);
+  assert.equal(paymentBalance({ items: [] }, [{ id: "unexpected", status: "Verified", amountVerified: 10 }]).status, "Unpaid");
+
+  const requests = [
+    { id: "quote-a", ref: "RCM-A", customerName: "Customer", quotation: { state: "Accepted", items: [{ amount: 100 }], quotationNumber: "Q-A" } },
+    { id: "quote-b", ref: "RCM-B", customerName: "Customer", quotation: { state: "Accepted", items: [{ amount: 50 }], quotationNumber: "Q-B" } },
+    { id: "quote-b", ref: "RCM-B", customerName: "Customer", quotation: { state: "Accepted", items: [{ amount: 50 }], quotationNumber: "Q-B" } },
+  ];
+  const summaries = quotationPaymentSummaries(requests, [
+    { id: "paid-1", requestId: "quote-a", status: "Verified", amountVerified: 30 },
+    { id: "paid-1", requestId: "quote-a", status: "Verified", amountVerified: 30 },
+    { id: "paid-2", requestId: "quote-a", status: "Verified", amountVerified: 20 },
+    { id: "pending", requestId: "quote-a", status: "Pending Verification", amountReported: 40 },
+    { id: "rejected", requestId: "quote-b", status: "Rejected", amountReported: 50 },
+  ]);
+  assert.equal(summaries.length, 2);
+  assert.deepEqual(summaries.map(({ balance }) => balance), [
+    { totalCents: 10000, verifiedCents: 5000, outstandingCents: 5000, status: "Partially Paid" },
+    { totalCents: 5000, verifiedCents: 0, outstandingCents: 5000, status: "Unpaid" },
+  ]);
+  assert.deepEqual(combinedPaymentBalance(summaries), {
+    totalCents: 15000,
+    verifiedCents: 5000,
+    outstandingCents: 10000,
+    status: "Partially Paid",
+  });
+  assert.equal(formatPaymentDate("2026-10-29T00:00:00.000Z"), "10/29/2026");
+  assert.equal(formatPaymentDate("invalid"), "Not available");
+  assert.equal(formatReviewedAt("invalid"), "Not available");
+  assert.match(formatReviewedAt("2026-10-29T12:27:24.000Z"), /^10\/29\/2026, /);
 });
 
 test.before(async () => {

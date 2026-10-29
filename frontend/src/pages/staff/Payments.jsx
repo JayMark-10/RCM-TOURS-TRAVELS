@@ -1,9 +1,39 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { apiRequest, getApiBaseUrl } from "../../services/api"
-import { Button, Card, CardHeader, Empty, Field, Input, PageHeader } from "../../components/ui"
+import { Badge, Button, Card, CardHeader, Empty, Field, Input, PageHeader } from "../../components/ui"
 import { useStore } from "../../lib/store"
-import { centsToMoney, paymentBalance } from "../../utils/paymentMoney"
+import {
+  centsToMoney,
+  combinedPaymentBalance,
+  formatPaymentDate,
+  formatReviewedAt,
+  quotationPaymentSummaries,
+} from "../../utils/paymentMoney"
+
+const formatMoney = (value) => Number.isFinite(Number(value))
+  ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(Number(value))
+  : "Not available"
+
+const financialStatusTone = {
+  Unpaid: "bg-red-50 text-red-800 ring-red-200",
+  "Partially Paid": "bg-yellow-50 text-yellow-900 ring-yellow-300",
+  Paid: "bg-green-50 text-green-800 ring-green-200",
+}
+
+const reviewStatusTone = {
+  "Pending Verification": "bg-yellow-50 text-yellow-900 ring-yellow-300",
+  Verified: "bg-blue-50 text-blue-800 ring-blue-200",
+  Rejected: "bg-red-50 text-red-800 ring-red-200",
+}
+
+function FinancialBadge({ status }) {
+  return <Badge className={financialStatusTone[status] || "bg-slate-50 text-slate-700 ring-slate-200"}>{status || "Unknown"}</Badge>
+}
+
+function ReviewBadge({ status }) {
+  return <Badge className={reviewStatusTone[status] || "bg-slate-50 text-slate-700 ring-slate-200"}>{status || "Unknown"}</Badge>
+}
 
 export default function PaymentManagement({ basePath = "/staff/requests" }) {
   const { notify, requests, user, settings, settingsLoading, settingsError, refreshSettings } = useStore()
@@ -36,7 +66,7 @@ export default function PaymentManagement({ basePath = "/staff/requests" }) {
     if (decision === "verify" && (maximumVerifiable < 0.01 || !Number.isFinite(amountVerified) || amountVerified <= 0 || amountVerified > maximumVerifiable)) {
       setActionError(maximumVerifiable < 0.01
         ? "There is no remaining quotation balance to verify for this payment."
-        : `Enter an amount from ₱0.01 to ₱${maximumVerifiable.toFixed(2)}.`)
+        : `Enter an amount from ${formatMoney(0.01)} to ${formatMoney(maximumVerifiable)}.`)
       return
     }
     setBusyId(payment.id)
@@ -55,19 +85,57 @@ export default function PaymentManagement({ basePath = "/staff/requests" }) {
     }
   }
 
+  const visibleRequests = useMemo(
+    () => user?.role === "admin"
+      ? requests
+      : requests.filter((request) => request.assignedTo === user?.id),
+    [requests, user?.id, user?.role],
+  )
+  const quotationSummaries = useMemo(
+    () => quotationPaymentSummaries(visibleRequests, payments),
+    [visibleRequests, payments],
+  )
+  const combinedBalance = useMemo(
+    () => combinedPaymentBalance(quotationSummaries),
+    [quotationSummaries],
+  )
   const cashEnabled = (settings.paymentMethods || []).some((method) => method.method === "Cash" && method.enabled)
-  const cashRequests = requests
-    .filter((request) => request.quotation?.state === "Accepted" && (user?.role === "admin" || request.assignedTo === user?.id))
-    .map((request) => ({
-      request,
-      balance: paymentBalance(request.quotation, payments.filter((payment) => payment.requestId === request.id)),
-    }))
-    .filter(({ balance }) => balance.outstandingCents > 0)
+  const cashRequests = quotationSummaries.filter(({ balance }) => balance.outstandingCents > 0)
 
   return <>
-    <PageHeader title="Payment Management" sub="Review reports, verify real receipts, and track verified balances. A report alone never counts as received funds." />
+    <PageHeader title="Payment Management" sub="Compare each accepted quotation with verified payments. Pending or rejected reports never reduce the outstanding balance." />
     {actionError && <div role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">{actionError}</div>}
     {loadError && <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-red-50 p-3 text-sm text-red-800"><p className="min-w-0 break-words">{loadError}</p><Button variant="outline" size="sm" onClick={refresh}>Retry</Button></div>}
+
+    <Card className="mb-5">
+      <CardHeader title="Accepted quotation balances" sub="Each request is counted once. Only verified payments reduce the balance." />
+      {loading ? <p role="status" className="p-4 text-sm text-muted">Loading quotation balances...</p> : quotationSummaries.length === 0 ? (
+        <p className="p-4 text-sm text-muted">No accepted quotations are available for your account.</p>
+      ) : (
+        <>
+          <div className="grid gap-3 border-b border-line p-4 sm:grid-cols-3 sm:p-5">
+            <SummaryAmount label="Combined quotation total" value={formatMoney(centsToMoney(combinedBalance.totalCents))} />
+            <SummaryAmount label="Verified amount paid" value={formatMoney(centsToMoney(combinedBalance.verifiedCents))} />
+            <SummaryAmount label="Combined outstanding balance" value={formatMoney(centsToMoney(combinedBalance.outstandingCents))} emphasis />
+          </div>
+          <ul className="divide-y divide-line">
+            {quotationSummaries.map(({ request, balance }) => (
+              <li key={request.id} className="grid gap-3 p-4 sm:grid-cols-[minmax(0,1.3fr)_repeat(3,minmax(0,1fr))_auto] sm:items-center sm:p-5">
+                <div className="min-w-0">
+                  <Link className="font-mono text-sm font-semibold text-blue" to={`${basePath}/${request.id}`}>{request.ref}</Link>
+                  <p className="break-words text-xs text-muted">{request.customerName || "Customer"} · {request.quotation?.quotationNumber || "Quotation"}</p>
+                </div>
+                <SummaryAmount label="Quotation / total" value={formatMoney(centsToMoney(balance.totalCents))} />
+                <SummaryAmount label="Verified paid" value={formatMoney(centsToMoney(balance.verifiedCents))} />
+                <SummaryAmount label="Outstanding" value={formatMoney(centsToMoney(balance.outstandingCents))} />
+                <FinancialBadge status={balance.status} />
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </Card>
+
     <Card className="mb-5">
       <CardHeader title="Record cash received" sub="Cash is recorded as verified only after staff physically receive it. Use this payment workflow, not the quotation editor." />
       {settingsLoading ? (
@@ -84,7 +152,7 @@ export default function PaymentManagement({ basePath = "/staff/requests" }) {
             <li key={request.id} className="p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm">
                 <Link className="font-mono font-semibold text-blue" to={`${basePath}/${request.id}`}>{request.ref}</Link>
-                <span>Outstanding: ₱{centsToMoney(balance.outstandingCents).toLocaleString()}</span>
+                <span className="font-medium">Outstanding: {formatMoney(centsToMoney(balance.outstandingCents))}</span>
               </div>
               <CashPaymentRecorder request={request} maxAmount={centsToMoney(balance.outstandingCents)} onSaved={async () => {
                 await refresh()
@@ -95,8 +163,9 @@ export default function PaymentManagement({ basePath = "/staff/requests" }) {
         </ul>
       )}
     </Card>
+
     <Card>
-      <CardHeader title="Payment reports" />
+      <CardHeader title="Payment reports" sub="Financial status describes the quotation balance. Record status describes this individual payment report." />
       {loading ? (
         <p role="status" className="p-4 text-sm text-muted sm:p-6">Loading payments...</p>
       ) : loadError ? (
@@ -109,12 +178,25 @@ export default function PaymentManagement({ basePath = "/staff/requests" }) {
             <li key={payment.id} className="space-y-3 p-4 sm:p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">
-                  <Link className="font-mono text-sm font-semibold text-blue" to={`${basePath}/${payment.requestId}`}>{payment.requestRef}</Link>
-                  <p className="mt-1 text-sm">{payment.customerName} · {payment.quotationNumber} · {payment.method} · reported ₱{payment.amountReported.toLocaleString()}</p>
-                  <p className="text-xs text-muted">Payment date: {new Date(payment.paymentDate).toLocaleDateString()}</p>
-                  <p className="break-words text-xs text-muted [overflow-wrap:anywhere]">Receipt / Transaction Reference Number: {payment.transactionReference || "Not provided (existing record)"}</p>
-                  <p className="text-xs text-muted">Verified ₱{payment.verifiedTotal.toLocaleString()} · due ₱{payment.outstanding.toLocaleString()} · {payment.balanceStatus}</p>
-                  <p className="mt-1 text-xs text-muted">Record: {payment.status}{payment.verifiedAt ? ` · reviewed ${new Date(payment.verifiedAt).toLocaleString()}` : ""}{payment.verificationNote ? ` · ${payment.verificationNote}` : ""}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Link className="font-mono text-sm font-semibold text-blue" to={`${basePath}/${payment.requestId}`}>{payment.requestRef}</Link>
+                    <FinancialBadge status={payment.balanceStatus} />
+                    <ReviewBadge status={payment.status} />
+                  </div>
+                  <p className="mt-2 text-sm">{payment.customerName || "Customer"} · {payment.quotationNumber || "Quotation"}</p>
+                  <dl className="mt-3 grid gap-x-5 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                    <Detail label="Quotation / total amount" value={formatMoney(payment.quotationTotal)} />
+                    <Detail label="Verified amount paid to date" value={formatMoney(payment.verifiedTotal)} />
+                    <Detail label="Outstanding balance" value={formatMoney(payment.outstanding)} />
+                    <Detail label="Submitted payment amount" value={formatMoney(payment.amountReported)} />
+                    <Detail label="Verified payment amount" value={payment.status === "Verified" ? formatMoney(payment.amountVerified) : "Not verified"} />
+                    <Detail label="Payment method" value={payment.method || "Not available"} />
+                    <Detail label="Payment date" value={formatPaymentDate(payment.paymentDate)} />
+                    <Detail label="Receipt / transaction reference" value={payment.transactionReference || "Not provided (existing record)"} />
+                    <Detail label="Record status" value={payment.status || "Not available"} />
+                    <Detail label="Reviewed" value={payment.verifiedAt ? formatReviewedAt(payment.verifiedAt) : "Not reviewed"} />
+                  </dl>
+                  {payment.verificationNote && <p className="mt-2 text-xs text-muted">Review note: {payment.verificationNote}</p>}
                 </div>
                 {payment.hasReceipt && <a className="font-medium text-blue" href={`${getApiBaseUrl()}${payment.receiptUrl}`}>Open receipt</a>}
               </div>
@@ -139,6 +221,20 @@ export default function PaymentManagement({ basePath = "/staff/requests" }) {
   </>
 }
 
+function SummaryAmount({ label, value, emphasis = false }) {
+  return <div className="min-w-0">
+    <p className="text-xs text-muted">{label}</p>
+    <p className={`mt-0.5 break-words text-sm ${emphasis ? "font-bold text-ink" : "font-semibold text-ink"}`}>{value}</p>
+  </div>
+}
+
+function Detail({ label, value }) {
+  return <div className="min-w-0">
+    <dt className="text-xs text-muted">{label}</dt>
+    <dd className="break-words font-medium text-ink">{value}</dd>
+  </div>
+}
+
 function CashPaymentRecorder({ request, maxAmount, onSaved }) {
   const [amount, setAmount] = useState("")
   const [note, setNote] = useState("")
@@ -150,7 +246,7 @@ function CashPaymentRecorder({ request, maxAmount, onSaved }) {
     event.preventDefault()
     const numericAmount = Number(amount)
     if (!Number.isFinite(numericAmount) || numericAmount <= 0 || numericAmount > maxAmount) {
-      setError(`Enter a cash amount from ₱0.01 to ₱${maxAmount.toFixed(2)}.`)
+      setError(`Enter a cash amount from ${formatMoney(0.01)} to ${formatMoney(maxAmount)}.`)
       return
     }
     setSaving(true)
