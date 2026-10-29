@@ -17,11 +17,10 @@ const Session = require("../models/Session");
 const Invitation = require("../models/Invitation");
 const SystemSetting = require("../models/SystemSetting");
 const { logEvent } = require("../services/securityLog");
-const { sendActivationCode, sendVerificationEmail } = require("../services/email");
+const { sendActivationCode } = require("../services/email");
 
 const BAD_LOGIN = "Invalid email or password.";
-const ACTIVATION_MESSAGE = "If the account is eligible and email delivery is configured, an activation code will arrive shortly.";
-const VERIFICATION_RESEND_MESSAGE = "If an unverified customer account exists for that address, a verification link will arrive shortly.";
+const ACTIVATION_MESSAGE = "If eligible, an activation code can be delivered when email service is available.";
 
 function requestActivationCode(cfg) {
   return async (req, res) => {
@@ -191,20 +190,6 @@ function login(cfg) {
       throw new AppError(401, BAD_LOGIN);
     }
 
-    if (user.role === "customer" && user.emailVerified === false) {
-      await logEvent(req, "login_failed_unverified_email", {
-        userId: user._id,
-        actorName: "Unauthenticated",
-        actorRole: "anonymous",
-        category: "security",
-        entityType: "User",
-        entityId: user._id,
-        outcome: "failure",
-        email,
-      });
-      throw new AppError(403, "Please verify your email address before signing in. Check your inbox or request a new verification link.");
-    }
-
     await User.updateOne(
       { _id: user._id },
       {
@@ -330,7 +315,7 @@ function register(cfg) {
       const user = await User.findOneAndUpdate(
         activationFilter,
         {
-          $set: { passwordHash, consentAt: now, emailVerified: true },
+          $set: { passwordHash, consentAt: now },
           $unset: {
             activationTokenHash: 1,
             activationTokenExpiresAt: 1,
@@ -462,7 +447,6 @@ function register(cfg) {
 
       const passwordHash = await bcrypt.hash(password, 12);
 
-      const verificationToken = role === "customer" ? newToken() : null;
       const user = await User.create({
         name,
         email,
@@ -470,12 +454,6 @@ function register(cfg) {
         role,
         phone,
         consentAt: now,
-        emailVerified: role !== "customer",
-        ...(verificationToken ? {
-          emailVerificationTokenHash: hashToken(verificationToken),
-          emailVerificationExpiresAt: new Date(now.getTime() + 24 * 60 * 60_000),
-          verificationEmailSentAt: now,
-        } : {}),
       });
 
       if (claimedInvitation) {
@@ -493,17 +471,6 @@ function register(cfg) {
           userId: user._id,
           email,
           detail: "role staff",
-        });
-      }
-
-      if (verificationToken) {
-        const deliveryAccepted = await sendVerificationEmail(cfg, email, verificationToken).catch(() => false);
-        return res.status(201).json({
-          verificationRequired: true,
-          deliveryAccepted,
-          message: deliveryAccepted
-            ? "Your account was created. A verification message was accepted by the email service; check your inbox before signing in."
-            : "Your account was created, but email delivery is unavailable right now. You can request another verification link after email delivery is configured.",
         });
       }
 
@@ -543,74 +510,10 @@ function register(cfg) {
   };
 }
 
-function resendVerification(cfg) {
-  return async (req, res) => {
-    const email = v.email(v.body(req).email);
-    const now = Date.now();
-    const token = newToken();
-    const user = await User.findOneAndUpdate(
-      {
-        email,
-        role: "customer",
-        active: true,
-        emailVerified: false,
-        $or: [
-          { verificationEmailSentAt: null },
-          { verificationEmailSentAt: mongoose.trusted({ $lt: new Date(now - 60_000) }) },
-        ],
-      },
-      { $set: {
-        emailVerificationTokenHash: hashToken(token),
-        emailVerificationExpiresAt: new Date(now + 24 * 60 * 60_000),
-        verificationEmailSentAt: new Date(now),
-      } },
-      { returnDocument: "after" },
-    ).select("email");
-
-    if (user) {
-      const sent = await sendVerificationEmail(cfg, email, token).catch(() => false);
-      if (!sent) {
-        await User.updateOne(
-          { _id: user._id, emailVerificationTokenHash: hashToken(token) },
-          { $unset: { emailVerificationTokenHash: 1, emailVerificationExpiresAt: 1 } },
-        );
-      }
-      await logEvent(req, "customer_verification_resent", { userId: user._id });
-    }
-    return res.status(202).json({ message: VERIFICATION_RESEND_MESSAGE });
-  };
-}
-
-function verifyEmail() {
-  return async (req, res) => {
-    const token = v.text(v.body(req).token, "token", { max: 100, label: "Verification token" });
-    const now = new Date();
-    const user = await User.findOneAndUpdate(
-      {
-        role: "customer",
-        emailVerified: false,
-        emailVerificationTokenHash: hashToken(token),
-        emailVerificationExpiresAt: mongoose.trusted({ $gt: now }),
-      },
-      { $set: { emailVerified: true }, $unset: {
-        emailVerificationTokenHash: 1,
-        emailVerificationExpiresAt: 1,
-        verificationEmailSentAt: 1,
-      } },
-      { returnDocument: "after" },
-    );
-    if (!user) throw new AppError(400, "This verification link is invalid, expired, or already used. Request a new link and try again.");
-    await logEvent(req, "customer_email_verified", { userId: user._id, email: user.email });
-    return res.json({ ok: true, message: "Your email is verified. You can now sign in." });
-  };
-}
-
 module.exports = {
   login,
   logout,
   me,
   register,
   requestActivationCode,
-  resendVerification,
-  verifyEmail,
 };

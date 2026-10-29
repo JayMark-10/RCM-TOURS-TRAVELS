@@ -144,10 +144,7 @@ function loadEnv(env = process.env) {
     sessionAbsoluteMs: int("SESSION_ABSOLUTE_HOURS", 8) * 60 * 60 * 1000,
     customerKeyMs: int("CUSTOMER_KEY_DAYS", 7) * 24 * 60 * 60 * 1000,
 
-    resendApiKey: env.RESEND_API_KEY || "",
-    emailFrom: env.EMAIL_FROM || "",
-
-    staffKeyMs: int("STAFF_KEY_HOURS", 48),
+    staffKeyMs: int("STAFF_KEY_HOURS", 48) * 60 * 60 * 1000,
     authRateMax: int("AUTH_RATE_MAX", 10),
     maxFailedLogins: int("MAX_FAILED_LOGINS", 5),
     lockoutMs: int("LOCKOUT_MINUTES", 15) * 60 * 1000,

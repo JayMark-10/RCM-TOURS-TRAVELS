@@ -15,7 +15,7 @@ const { parseCookies } = require("../utils/cookies");
 const { assertSafeKeys, escapeRegex } = require("../utils/sanitize");
 const v = require("../utils/validate");
 const { errorHandler } = require("../middleware/errorHandler");
-const { sendActivationCode, sendVerificationEmail, sendEmailMessage } = require("../services/email");
+const { sendActivationCode } = require("../services/email");
 const { configureLocalDns } = require("../utils/localDns");
 const {
   centsToMoney,
@@ -378,6 +378,11 @@ test("unknown route returns a plain 404", async () => {
   assert.equal(r.status, 404);
 });
 
+test("customer email-verification endpoints are retired", async () => {
+  assert.equal((await c.call("POST", "/api/auth/verify-email", { token: "ignored" })).status, 404);
+  assert.equal((await c.call("POST", "/api/auth/resend-verification", { email: "person@example.com" })).status, 404);
+});
+
 test("tokens: random, long, hashed deterministically", () => {
   const a = newToken();
   const b = newToken();
@@ -414,120 +419,21 @@ test("password rules", () => {
   );
 });
 
-test("email delivery returns false when the Resend API key is missing", async () => {
+test("activation email delivery is disabled without an injected test sender", async () => {
   const previous = console.warn;
   let warning = "";
   console.warn = (...args) => { warning = args.join(" "); };
   try {
-    let called = false;
-    const cfg = { emailFrom: "RCM <sender@example.com>", resendClient: { emails: { send: async () => { called = true; } } } };
+    const cfg = {};
     assert.equal(await sendActivationCode(cfg, "customer@example.com", "123456"), false);
-    assert.match(warning, /RESEND_API_KEY/);
-    assert.equal(called, false);
+    assert.match(warning, /disabled/);
     assert.equal(warning.includes("123456"), false);
   } finally {
     console.warn = previous;
   }
 });
 
-test("Resend acceptance returns true and preserves message sender and content", async () => {
-  const sent = [];
-  const cfg = {
-    resendApiKey: "re_test_secret_not_for_logs",
-    emailFrom: "RCM <sender@example.com>",
-    clientOrigin: "https://rcm.example.com",
-    resendClient: { emails: { send: async (message) => { sent.push(message); return { data: { id: "email_test_id" }, error: null }; } } },
-  };
-  assert.equal(await sendActivationCode(cfg, "customer@example.com", "654321"), true);
-  assert.equal(await sendVerificationEmail(cfg, "customer@example.com", "one_time_token"), true);
-  assert.equal(sent[0].from, cfg.emailFrom);
-  assert.deepEqual(sent[0].to, ["customer@example.com"]);
-  assert.match(sent[0].text, /654321.*10 minutes/);
-  assert.match(sent[1].text, /https:\/\/rcm\.example\.com\/verify-email#token=one_time_token/);
-  assert.match(sent[1].text, /within 24 hours/);
-});
-
-test("verification delivery rejects a missing client origin without contacting Resend or logging secrets", async () => {
-  const previous = console.warn;
-  let diagnostic = "";
-  let called = false;
-  console.warn = (...args) => { diagnostic += args.join(" "); };
-  try {
-    const cfg = {
-      resendApiKey: "re_test_secret_not_for_logs",
-      emailFrom: "sender@example.com",
-      resendClient: { emails: { send: async () => { called = true; return { data: { id: "fake" } }; } } },
-    };
-    assert.equal(await sendVerificationEmail(cfg, "customer@example.com", "one_time_token"), false);
-    assert.equal(called, false);
-    assert.match(diagnostic, /CLIENT_ORIGIN/);
-    assert.doesNotMatch(diagnostic, /re_test_secret_not_for_logs|customer@example\.com|one_time_token|verify-email/);
-  } finally {
-    console.warn = previous;
-  }
-});
-
-test("verification delivery rejects an invalid client origin without contacting Resend or logging secrets", async () => {
-  const previous = console.warn;
-  let diagnostic = "";
-  let called = false;
-  console.warn = (...args) => { diagnostic += args.join(" "); };
-  try {
-    const cfg = {
-      resendApiKey: "re_test_secret_not_for_logs",
-      emailFrom: "sender@example.com",
-      clientOrigin: "https://rcm.example.com/unexpected-path",
-      resendClient: { emails: { send: async () => { called = true; return { data: { id: "fake" } }; } } },
-    };
-    assert.equal(await sendVerificationEmail(cfg, "customer@example.com", "one_time_token"), false);
-    assert.equal(called, false);
-    assert.match(diagnostic, /CLIENT_ORIGIN/);
-    assert.doesNotMatch(diagnostic, /re_test_secret_not_for_logs|customer@example\.com|one_time_token|verify-email/);
-  } finally {
-    console.warn = previous;
-  }
-});
-
-test("Resend provider rejection returns false and logs only safe diagnostics", async () => {
-  const previous = console.error;
-  let diagnostic = "";
-  console.error = (...args) => { diagnostic += args.map((value) => typeof value === "string" ? value : JSON.stringify(value)).join(" "); };
-  try {
-    const cfg = {
-      resendApiKey: "re_test_secret_not_for_logs",
-      emailFrom: "sender@example.com",
-      clientOrigin: "https://rcm.example.com",
-      resendClient: { emails: { send: async () => ({ data: null, error: { statusCode: 422, code: "validation_error", message: "re_test_secret_not_for_logs customer@example.com one_time_token" } }) } },
-    };
-    assert.equal(await sendVerificationEmail(cfg, "customer@example.com", "one_time_token"), false);
-    assert.match(diagnostic, /422/);
-    assert.match(diagnostic, /validation_error/);
-    assert.doesNotMatch(diagnostic, /re_test_secret_not_for_logs|customer@example\.com|one_time_token|message/);
-  } finally {
-    console.error = previous;
-  }
-});
-
-test("Resend network errors return false without logging messages or secrets", async () => {
-  const previous = console.error;
-  let diagnostic = "";
-  console.error = (...args) => { diagnostic += args.map((value) => typeof value === "string" ? value : JSON.stringify(value)).join(" "); };
-  try {
-    const networkError = Object.assign(new Error("failed for customer@example.com using re_test_secret"), { code: "ECONNRESET" });
-    const cfg = {
-      resendApiKey: "re_test_secret",
-      emailFrom: "sender@example.com",
-      resendClient: { emails: { send: async () => { throw networkError; } } },
-    };
-    assert.equal(await sendActivationCode(cfg, "customer@example.com", "765432"), false);
-    assert.match(diagnostic, /ECONNRESET/);
-    assert.doesNotMatch(diagnostic, /re_test_secret|customer@example\.com|765432|failed for/);
-  } finally {
-    console.error = previous;
-  }
-});
-
-test("activation email mock receives its recipient and does not disclose codes from API configuration", async () => {
+test("activation email injection receives its original arguments", async () => {
   let deliveredTo = "";
   let deliveredCode = "";
   const sent = await sendActivationCode({ sendEmail: async (to, code) => { deliveredTo = to; deliveredCode = code; return true; } }, "customer@example.com", "654321");
@@ -543,12 +449,6 @@ test("existing injected email callbacks remain supported", async () => {
   }, "customer@example.com", "654321");
   assert.equal(activation, true);
   assert.deepEqual(sent, { to: "customer@example.com", code: "654321" });
-  sent = null;
-  const verification = await sendVerificationEmail({
-    sendVerificationEmail: async (to, token) => { sent = { to, token }; return true; },
-  }, "customer@example.com", "opaque-one-time-token");
-  assert.equal(verification, true);
-  assert.deepEqual(sent, { to: "customer@example.com", token: "opaque-one-time-token" });
 });
 
 test("local DNS workaround matches server startup and is skipped in production", () => {
@@ -565,16 +465,21 @@ test("local DNS workaround matches server startup and is skipped in production",
 });
 
 test("config refuses weak production settings", () => {
-  const emailConfig = loadEnv({
-    NODE_ENV: "test",
-    MONGODB_URI: "mongodb://localhost:27017/rcm",
-    CLIENT_ORIGIN: "http://localhost:5173",
-    RESEND_API_KEY: "re_config_test",
-    EMAIL_FROM: "RCM <sender@example.com>",
-  });
-  assert.equal(emailConfig.resendApiKey, "re_config_test");
-  assert.equal(emailConfig.emailFrom, "RCM <sender@example.com>");
-  assert.equal(emailConfig.smtpPass, undefined);
+  assert.equal(
+    loadEnv({
+      MONGODB_URI: "mongodb://localhost:27017/rcm",
+      CLIENT_ORIGIN: "http://localhost:5173",
+    }).staffKeyMs,
+    48 * 60 * 60 * 1000,
+  );
+  assert.equal(
+    loadEnv({
+      MONGODB_URI: "mongodb://localhost:27017/rcm",
+      CLIENT_ORIGIN: "http://localhost:5173",
+      STAFF_KEY_HOURS: "72",
+    }).staffKeyMs,
+    72 * 60 * 60 * 1000,
+  );
 
   assert.throws(
     () =>

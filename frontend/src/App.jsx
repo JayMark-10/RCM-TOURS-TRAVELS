@@ -45,7 +45,6 @@ import PaymentManagement from "./pages/staff/Payments"
 import {
   Register,
   SignIn,
-  VerifyEmail,
 } from "./pages/public/Auth"
 
 import Home from "./pages/public/Home"
@@ -71,7 +70,6 @@ function App() {
             <Route index element={<Home />} />
             <Route path="signin" element={<SignIn />} />
             <Route path="register" element={<Register />} />
-            <Route path="verify-email" element={<VerifyEmail />} />
           </Route>
 
           <Route path="portal" element={<CustomerLayout />}>

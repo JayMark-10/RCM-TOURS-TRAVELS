@@ -19,7 +19,7 @@ const skip = URI
   ? false
   : "set TEST_MONGODB_URI to run database tests";
 
-const { startServer, client, getTestActivationCode, getTestVerificationToken } = require("./helpers");
+const { startServer, client, getTestActivationCode } = require("./helpers");
 const { connectDb, mongoose } = require("../config/db");
 
 const User = require("../models/User");
@@ -316,14 +316,13 @@ test(
     const admin = client(srv.url);
     await login(admin, "admin@x.co");
 
-    assert.equal(
-      (
-        await admin.call("POST", "/api/invitations", {
-          role: "staff",
-        })
-      ).status,
-      201
-    );
+    const issued = await admin.call("POST", "/api/invitations", {
+      role: "staff",
+    });
+    assert.equal(issued.status, 201);
+    const invitationLifetime = new Date(issued.json.invitation.expiresAt) - new Date(issued.json.invitation.createdAt);
+    assert.ok(invitationLifetime > 48 * 60 * 60 * 1000 - 5_000);
+    assert.ok(invitationLifetime < 48 * 60 * 60 * 1000 + 5_000);
 
     assert.equal(
       (
@@ -410,6 +409,7 @@ test(
 
     assert.equal(response.status, 201);
     assert.equal(response.json.user.role, "staff");
+    assert.ok(response.cookie);
 
     const user = await User.findOne({ email: "new@x.co" });
 
@@ -495,7 +495,8 @@ test(
 
     // No invitation is required for a customer.
     // Client-supplied roles and permissions must be ignored.
-    const customer = await reg(client(srv.url), undefined, {
+    const customerClient = client(srv.url);
+    const customer = await reg(customerClient, undefined, {
       email: "public@x.co",
       role: "admin",
       active: false,
@@ -503,35 +504,18 @@ test(
     });
 
     assert.equal(customer.status, 201);
-    assert.equal(customer.json.verificationRequired, true);
-    assert.equal(customer.cookie, "");
+    assert.ok(customer.cookie);
+    assert.equal(customer.json.user.role, "customer");
+    assert.equal((await customerClient.call("GET", "/api/auth/me")).status, 200);
 
     const publicUser = await User.findOne({ email: "public@x.co" });
 
     assert.equal(publicUser.role, "customer");
     assert.notEqual(publicUser.active, false);
     assert.equal(publicUser.canAssign, false);
-    assert.equal(publicUser.emailVerified, false);
-
-    assert.equal((await login(client(srv.url), "public@x.co")).status, 403);
-    const token = getTestVerificationToken();
-    assert.ok(token);
-    assert.equal((await User.findById(publicUser._id).select("+emailVerificationTokenHash")).emailVerificationTokenHash, hashToken(token));
-    assert.equal((await c.call("POST", "/api/auth/verify-email", { token: "invalid-token" })).status, 400);
-    const verified = await c.call("POST", "/api/auth/verify-email", { token });
-    assert.equal(verified.status, 200);
+    // Legacy documents that still carry the removed flag must remain login-capable.
+    await User.collection.updateOne({ _id: publicUser._id }, { $set: { emailVerified: false } });
     assert.equal((await login(client(srv.url), "public@x.co")).status, 200);
-    assert.equal((await c.call("POST", "/api/auth/verify-email", { token })).status, 400);
-
-    const expiring = await User.create({ name: "Expiring", email: "expired-verification@x.co", passwordHash: await bcrypt.hash(PW, 4), role: "customer", emailVerified: false, emailVerificationTokenHash: hashToken("expired-token"), emailVerificationExpiresAt: new Date(Date.now() - 1000) });
-    assert.equal((await c.call("POST", "/api/auth/verify-email", { token: "expired-token" })).status, 400);
-    const resend = await c.call("POST", "/api/auth/resend-verification", { email: "expired-verification@x.co" });
-    assert.equal(resend.status, 202);
-    const resentToken = getTestVerificationToken();
-    assert.notEqual(resentToken, token);
-    assert.equal((await User.findById(expiring._id).select("+emailVerificationTokenHash")).emailVerificationTokenHash, hashToken(resentToken));
-    assert.equal((await c.call("POST", "/api/auth/resend-verification", { email: "expired-verification@x.co" })).status, 202);
-    assert.equal(getTestVerificationToken(), resentToken);
 
     assert.ok(
       await SecurityEvent.exists({ type: "key_rejected" })
