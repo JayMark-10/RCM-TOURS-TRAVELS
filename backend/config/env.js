@@ -130,19 +130,6 @@ function loadEnv(env = process.env) {
     );
   }
 
-  const smtpSecure =
-    env.SMTP_SECURE === undefined || env.SMTP_SECURE === ""
-      ? true
-      : env.SMTP_SECURE === "true";
-
-  if (
-    env.SMTP_SECURE !== undefined &&
-    env.SMTP_SECURE !== "" &&
-    !["true", "false"].includes(env.SMTP_SECURE)
-  ) {
-    problems.push("SMTP_SECURE must be true or false.");
-  }
-
   const cfg = {
     nodeEnv,
     isProd,
@@ -157,12 +144,8 @@ function loadEnv(env = process.env) {
     sessionAbsoluteMs: int("SESSION_ABSOLUTE_HOURS", 8) * 60 * 60 * 1000,
     customerKeyMs: int("CUSTOMER_KEY_DAYS", 7) * 24 * 60 * 60 * 1000,
 
-    smtpHost: env.SMTP_HOST || "",
-    smtpPort: int("SMTP_PORT", 465),
-    smtpSecure,
-    smtpUser: env.SMTP_USER || "",
-    smtpPass: env.SMTP_PASS || "",
-    emailFrom: env.EMAIL_FROM || env.SMTP_USER || "",
+    resendApiKey: env.RESEND_API_KEY || "",
+    emailFrom: env.EMAIL_FROM || "",
 
     staffKeyMs: int("STAFF_KEY_HOURS", 48),
     authRateMax: int("AUTH_RATE_MAX", 10),
