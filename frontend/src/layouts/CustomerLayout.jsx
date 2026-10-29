@@ -11,6 +11,7 @@ import { AuthConnectionError } from "./AuthConnectionError"
 import { useStore } from "../lib/store"
 import { LogoutButton } from "../components/LogoutButton"
 import { RouteTransition } from "../components/RouteTransition"
+import { getHomeDestination } from "../lib/navigation"
 import { useSlidingNavIndicator } from "../hooks/useSlidingNavIndicator"
 
 export function CustomerLayout() {
@@ -73,7 +74,7 @@ export function CustomerLayout() {
     <div className="app-canvas min-h-screen pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0">
       <header className="sticky top-0 z-30 border-b border-white/80 bg-white/82 shadow-[0_4px_24px_rgba(11,31,58,.055)] backdrop-blur-xl transition-[background-color,box-shadow] duration-300">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-2 px-3 sm:gap-4 sm:px-5">
-          <Logo />
+          <Logo to={getHomeDestination("customer")} />
 
           <nav data-sliding-nav="customer-primary" className="relative hidden items-center gap-1 md:flex">
             <span

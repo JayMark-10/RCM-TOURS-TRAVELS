@@ -1,15 +1,17 @@
 import { useEffect, useRef } from "react"
 import { useLocation, useNavigationType } from "react-router-dom"
+import { shouldScrollToTop } from "../lib/navigation"
 
 // Scrolls to the top on every page change, or to the section named in the URL hash (e.g. /#services).
 function ScrollManager() {
-  const { pathname, hash } = useLocation()
+  const { pathname, hash, key } = useLocation()
   const navigationType = useNavigationType()
-  const previousPathname = useRef(pathname)
+  const previousLocation = useRef({ pathname, key })
 
   useEffect(() => {
-    const routeChanged = previousPathname.current !== pathname
-    previousPathname.current = pathname
+    const routeChanged = previousLocation.current.pathname !== pathname
+    const locationChanged = previousLocation.current.key !== key
+    previousLocation.current = { pathname, key }
     const reduceMotion = window.matchMedia(
       "(prefers-reduced-motion: reduce)",
     ).matches
@@ -17,7 +19,7 @@ function ScrollManager() {
     if (hash === "") {
       // Let browser history restore scroll on Back/Forward. Route changes from
       // links reset instantly so scrolling does not compete with page motion.
-      if (routeChanged && navigationType !== "POP") {
+      if (shouldScrollToTop({ hash, locationChanged, navigationType })) {
         window.scrollTo({ top: 0, behavior: "auto" })
       }
       return
@@ -30,13 +32,13 @@ function ScrollManager() {
       const section = document.getElementById(hash.slice(1))
       if (section) {
         section.scrollIntoView({
-          behavior: routeChanged || reduceMotion ? "auto" : "smooth",
+          behavior: routeChanged || reduceMotion || navigationType === "POP" ? "auto" : "smooth",
         })
       }
     }, 0)
 
     return () => window.clearTimeout(timer)
-  }, [pathname, hash, navigationType])
+  }, [pathname, hash, key, navigationType])
 
   return null
 }
