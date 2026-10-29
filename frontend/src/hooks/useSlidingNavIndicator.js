@@ -5,6 +5,9 @@ export function useSlidingNavIndicator(navId, activeKey) {
     const navs = Array.from(
       document.querySelectorAll(`[data-sliding-nav="${navId}"]`),
     )
+    let disposed = false
+    const observer =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update)
 
     function update() {
       for (const nav of navs) {
@@ -15,6 +18,7 @@ export function useSlidingNavIndicator(navId, activeKey) {
           nav.querySelector('a[aria-current="page"]')
         const indicator = nav.querySelector("[data-active-indicator]")
         if (!activeLink || !indicator) continue
+        observer?.observe(activeLink)
 
         const navRect = nav.getBoundingClientRect()
         const linkRect = activeLink.getBoundingClientRect()
@@ -43,12 +47,16 @@ export function useSlidingNavIndicator(navId, activeKey) {
 
     update()
     window.addEventListener("resize", update)
-    const observer =
-      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update)
     for (const nav of navs) observer?.observe(nav)
+    document.fonts?.addEventListener?.("loadingdone", update)
+    document.fonts?.ready?.then(() => {
+      if (!disposed) update()
+    })
 
     return () => {
+      disposed = true
       window.removeEventListener("resize", update)
+      document.fonts?.removeEventListener?.("loadingdone", update)
       observer?.disconnect()
     }
   }, [navId, activeKey])

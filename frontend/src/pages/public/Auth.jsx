@@ -82,11 +82,15 @@ export function SignIn() {
   const { signIn } = useStore()
 
   const [error, setError] = useState("")
+  const [emailInvalid, setEmailInvalid] = useState(false)
+  const [credentialsInvalid, setCredentialsInvalid] = useState(false)
   const [loading, setLoading] = useState(false)
 
   async function handleSubmit(event) {
     event.preventDefault()
     setError("")
+    setEmailInvalid(false)
+    setCredentialsInvalid(false)
     setLoading(true)
 
     const formData = new FormData(event.currentTarget)
@@ -113,6 +117,8 @@ export function SignIn() {
       })
     } catch (requestError) {
       setError(getErrorMessage(requestError))
+      if (requestError.status === 401) setCredentialsInvalid(true)
+      else if (/email is required|valid email address/i.test(requestError.message)) setEmailInvalid(true)
     } finally {
       setLoading(false)
     }
@@ -130,6 +136,9 @@ export function SignIn() {
             type="email"
             autoComplete="email"
             required
+            aria-invalid={emailInvalid || credentialsInvalid}
+            aria-describedby={emailInvalid || credentialsInvalid ? "signin-error" : undefined}
+            onChange={() => setEmailInvalid(false)}
           />
         </Field>
 
@@ -139,11 +148,14 @@ export function SignIn() {
             type="password"
             autoComplete="current-password"
             required
+            aria-invalid={credentialsInvalid}
+            aria-describedby={credentialsInvalid ? "signin-error" : undefined}
+            onChange={() => setCredentialsInvalid(false)}
           />
         </Field>
 
         {error && (
-          <p role="alert" className="text-sm text-red">
+          <p id="signin-error" role="alert" className="text-sm text-red">
             {error}
           </p>
         )}
@@ -178,6 +190,7 @@ export function Register() {
   const [accountType, setAccountType] = useState("customer")
   const [error, setError] = useState("")
   const [phoneInvalid, setPhoneInvalid] = useState(false)
+  const [nameInvalid, setNameInvalid] = useState(false)
   const [loading, setLoading] = useState(false)
   const [activationRequested, setActivationRequested] = useState(false)
 
@@ -185,6 +198,7 @@ export function Register() {
     event.preventDefault()
     setError("")
     setPhoneInvalid(false)
+    setNameInvalid(false)
 
     const formData = new FormData(event.currentTarget)
     const password = formData.get("password")
@@ -196,6 +210,7 @@ export function Register() {
 
     if (accountType !== "claim" && !isValidFullName(name)) {
       setError(FULL_NAME_ERROR)
+      setNameInvalid(true)
       return
     }
 
@@ -302,6 +317,8 @@ export function Register() {
             onChange={(event) => {
               setAccountType(event.target.value)
               setError("")
+              setNameInvalid(false)
+              setPhoneInvalid(false)
             }}
             options={[
               { value: "customer", label: "Customer" },
@@ -345,7 +362,14 @@ export function Register() {
               autoComplete="name"
               maxLength={120}
               title={FULL_NAME_ERROR}
+              aria-invalid={accountType !== "claim" && nameInvalid}
+              aria-describedby={nameInvalid ? "register-error" : undefined}
               required
+              onChange={(event) => {
+                const valid = isValidFullName(event.target.value)
+                setNameInvalid(!valid && error === FULL_NAME_ERROR)
+                if (valid && error === FULL_NAME_ERROR) setError("")
+              }}
             />
           </Field>
         )}
@@ -368,13 +392,14 @@ export function Register() {
                 autoComplete="tel"
                 inputMode={accountType === "customer" ? "numeric" : undefined}
                 aria-invalid={accountType === "customer" && phoneInvalid}
+                aria-describedby={accountType === "customer" && phoneInvalid ? "register-error" : undefined}
                 title={accountType === "customer" ? PHILIPPINE_MOBILE_ERROR : undefined}
                 onChange={(event) => {
                   if (phoneInvalid) {
-                    setPhoneInvalid(
-                      accountType === "customer" &&
-                        !isValidPhilippineMobile(event.target.value)
-                    )
+                    const invalid = accountType === "customer" &&
+                      !isValidPhilippineMobile(event.target.value)
+                    setPhoneInvalid(invalid)
+                    if (!invalid && error === PHILIPPINE_MOBILE_ERROR) setError("")
                   }
                 }}
               />
@@ -420,7 +445,7 @@ export function Register() {
         </label>
 
         {error && (
-          <p role="alert" className="text-sm text-red">
+          <p id="register-error" role="alert" className="text-sm text-red">
             {error}
           </p>
         )}

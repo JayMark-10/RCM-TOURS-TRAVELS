@@ -209,7 +209,7 @@ async function createReport(req, res) {
       max: 120,
       label: "Receipt / Transaction Reference Number",
     });
-  } else if (body.transactionReference !== undefined && body.transactionReference !== null) {
+  } else if (body.transactionReference !== undefined) {
     if (typeof body.transactionReference !== "string") {
       v.text(body.transactionReference, "transactionReference", {
         max: 120,
@@ -224,8 +224,7 @@ async function createReport(req, res) {
     }
   }
   if (/[\u0000-\u001f\u007f]/.test(transactionReference)) throw new AppError(400, "Receipt / Transaction Reference Number contains invalid characters.");
-  const amount = typeof body.amount === "string" && body.amount.trim() ? Number(body.amount) : body.amount;
-  if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0 || amount > 100000000) throw new AppError(400, "Enter a valid payment amount.");
+  const amount = v.numeric(body.amount, "amount", { min: Number.EPSILON, max: 100000000, label: "payment amount" });
   const amountCents = moneyToCents(amount);
   if (amountCents <= 0) throw new AppError(400, "Enter an amount of at least 0.01.");
   const receipt = ["Bank Transfer", "GCash"].includes(method) ? receiptFromDataUrl(body.receiptData) : null;
@@ -328,8 +327,9 @@ async function verify(req, res) {
       verifiedAt: new Date(),
     };
     if (decision === "verify") {
-      const amount = body.amountVerified === undefined ? payment.amountReported : Number(body.amountVerified);
-      if (!Number.isFinite(amount) || amount <= 0) throw new AppError(400, "Verified amount must be positive and cannot exceed the reported amount.");
+      const amount = body.amountVerified === undefined
+        ? payment.amountReported
+        : v.numeric(body.amountVerified, "amountVerified", { min: Number.EPSILON, max: 100000000, label: "verified amount" });
       const amountCents = moneyToCents(amount);
       if (amountCents <= 0 || amountCents > moneyToCents(payment.amountReported)) throw new AppError(400, "Verified amount must be positive and cannot exceed the reported amount.");
       const others = await Payment.find({ requestId: request._id, _id: mongoose.trusted({ $ne: payment._id }) }).select("_id status amountVerified").session(session).lean();
@@ -367,13 +367,13 @@ async function recordCash(req, res) {
   if (typeof body.requestId !== "string" || !/^[a-f\d]{24}$/i.test(body.requestId)) throw new AppError(400, "Invalid request.");
   if (req.user.role === "customer") throw new AppError(403, "You do not have permission to record cash received.");
   await requireStaffAssignment(req, body.requestId, "cash payment recording");
+  const amount = v.numeric(body.amount, "amount", { min: Number.EPSILON, max: 100000000, label: "payment amount" });
+  const note = body.note === undefined || body.note === "" ? "" : v.text(body.note, "note", { max: 1000, label: "Note" });
   const accessFilter = req.user.role === "admin" ? {} : { assignedTo: req.user._id };
   const response = await withPaymentTransaction(body.requestId, accessFilter, async (session, request) => {
     const settings = await SystemSetting.findOne({ key: "global" }).select("paymentMethods").session(session).lean();
     if (!settings?.paymentMethods?.some((item) => item.method === "Cash" && item.enabled)) throw new AppError(409, "Cash recording is disabled until the agency enables this payment method.");
     if (!request.quotation || request.quotation.state !== "Accepted") throw new AppError(409, "Cash can be recorded only for an accepted quotation.");
-    const amount = Number(body.amount);
-    if (!Number.isFinite(amount) || amount <= 0 || amount > 100000000) throw new AppError(400, "Enter a valid payment amount.");
     const paymentDate = body.paymentDate === undefined || body.paymentDate === ""
       ? new Date()
       : typeof body.paymentDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.paymentDate) && !Number.isNaN(Date.parse(`${body.paymentDate}T00:00:00.000Z`)) && new Date(`${body.paymentDate}T00:00:00.000Z`).toISOString().slice(0, 10) === body.paymentDate
@@ -397,7 +397,7 @@ async function recordCash(req, res) {
       status: "Verified",
       verifiedBy: req.user._id,
       verifiedAt: new Date(),
-      verificationNote: body.note ? v.text(body.note, "note", { max: 1000, label: "Note" }) : "",
+      verificationNote: note,
     }], { session });
     await logEvent(req, "cash_payment_recorded", {
       userId: req.user._id,

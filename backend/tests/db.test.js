@@ -249,7 +249,11 @@ test(
 
     const response = await login(client(srv.url), "c@x.co");
 
-    assert.equal(response.status, 429);
+    assert.equal(response.status, 401);
+    assert.equal(response.json.error, "Invalid email or password.");
+    const unknown = await login(client(srv.url), "unknown-lockout@x.co");
+    assert.equal(unknown.status, 401);
+    assert.equal(unknown.json.error, response.json.error);
 
     assert.ok(
       await SecurityEvent.exists({ type: "account_locked" })

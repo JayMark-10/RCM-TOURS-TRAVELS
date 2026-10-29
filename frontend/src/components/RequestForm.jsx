@@ -85,6 +85,8 @@ export function RequestForm({ mode }) {
   // are not instant and a fast double-click could slip through.
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState("")
+  const fullNameInvalid = submitError === FULL_NAME_ERROR
+  const mobileInvalid = submitError === PHILIPPINE_MOBILE_ERROR
   const submittingRef = useRef(false)
 
   // Find existing customers for offline requests.
@@ -305,6 +307,12 @@ export function RequestForm({ mode }) {
       ...newCust,
       [field]: value,
     })
+    if (
+      (field === "name" && submitError === FULL_NAME_ERROR) ||
+      (field === "phone" && submitError === PHILIPPINE_MOBILE_ERROR)
+    ) {
+      setSubmitError("")
+    }
   }
 
   function handleServiceSelect(selectedServiceId) {
@@ -456,9 +464,12 @@ export function RequestForm({ mode }) {
             <div className="mt-3 grid gap-4 sm:grid-cols-3">
               <Field label="Full name">
                 <Input
+                  required
                   value={newCust.name}
                   maxLength={120}
                   title={FULL_NAME_ERROR}
+                  aria-invalid={fullNameInvalid}
+                  aria-describedby={fullNameInvalid ? "request-validation-error" : undefined}
                   onChange={(event) =>
                     handleNewCustomerChange("name", event.target.value)
                   }
@@ -467,6 +478,7 @@ export function RequestForm({ mode }) {
 
               <Field label="Email">
                 <Input
+                  required
                   type="email"
                   value={newCust.email}
                   onChange={(event) =>
@@ -480,6 +492,8 @@ export function RequestForm({ mode }) {
                   type="tel"
                   inputMode="numeric"
                   title={PHILIPPINE_MOBILE_ERROR}
+                  aria-invalid={mobileInvalid && newCust.phone !== ""}
+                  aria-describedby={mobileInvalid ? "request-validation-error" : undefined}
                   value={newCust.phone}
                   onChange={(event) =>
                     handleNewCustomerChange("phone", event.target.value)
@@ -545,8 +559,13 @@ export function RequestForm({ mode }) {
                 required
                 maxLength={120}
                 title={FULL_NAME_ERROR}
+                aria-invalid={fullNameInvalid}
+                aria-describedby={fullNameInvalid ? "request-validation-error" : undefined}
                 value={cName}
-                onChange={(event) => setCName(event.target.value)}
+                onChange={(event) => {
+                  setCName(event.target.value)
+                  if (submitError === FULL_NAME_ERROR) setSubmitError("")
+                }}
               />
             </Field>
 
@@ -565,8 +584,13 @@ export function RequestForm({ mode }) {
                 type="tel"
                 inputMode="numeric"
                 title={PHILIPPINE_MOBILE_ERROR}
+                aria-invalid={mobileInvalid}
+                aria-describedby={mobileInvalid ? "request-validation-error" : undefined}
                 value={cPhone}
-                onChange={(event) => setCPhone(event.target.value)}
+                onChange={(event) => {
+                  setCPhone(event.target.value)
+                  if (submitError === PHILIPPINE_MOBILE_ERROR) setSubmitError("")
+                }}
               />
             </Field>
           </div>
@@ -705,6 +729,7 @@ export function RequestForm({ mode }) {
 
       {submitError && (
         <div
+          id="request-validation-error"
           role="alert"
           className="rounded-lg bg-red-50 p-4 text-sm text-red-800 ring-1 ring-red-200"
         >

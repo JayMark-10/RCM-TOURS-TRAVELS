@@ -117,10 +117,9 @@ function login(cfg) {
         email,
       });
 
-      throw new AppError(
-        429,
-        "Too many failed attempts. Try again later."
-      );
+      // Keep the response indistinguishable from other invalid credentials;
+      // otherwise this endpoint reveals which email addresses have accounts.
+      throw new AppError(401, BAD_LOGIN);
     }
 
     const hash =

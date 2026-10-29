@@ -40,6 +40,21 @@ function philippineMobile(value, field = "phone", { optional = false, label = "M
   return value;
 }
 
+function numeric(value, field, { min = -Infinity, max = Infinity, label = field } = {}) {
+  let number;
+  if (typeof value === "number") {
+    number = value;
+  } else if (typeof value === "string" && value.trim() && /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(value.trim())) {
+    number = Number(value.trim());
+  } else {
+    fail(field, `Enter a valid ${label}.`);
+  }
+  if (!Number.isFinite(number) || number < min || number > max) {
+    fail(field, `Enter a valid ${label}.`);
+  }
+  return number;
+}
+
 // bcrypt only uses the first 72 bytes, so longer passwords are refused rather than silently truncated.
 function newPassword(value, field = "password") {
   if (typeof value !== "string") fail(field, "Password is required.");
@@ -59,4 +74,4 @@ function body(req) {
   return b;
 }
 
-module.exports = { text, email, fullName, philippineMobile, newPassword, oneOf, body };
+module.exports = { text, email, fullName, philippineMobile, numeric, newPassword, oneOf, body };

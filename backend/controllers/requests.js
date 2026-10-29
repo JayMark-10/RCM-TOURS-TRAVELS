@@ -139,15 +139,19 @@ function validateServiceDetails(service, details) {
       continue;
     }
 
-    if (field.type === "select" && !(optionsFor(field, details) || []).includes(String(value))) {
+    if (["text", "textarea", "select", "date"].includes(field.type) && typeof value !== "string") {
+      throw new AppError(400, `Enter a valid ${field.label} value.`);
+    }
+
+    if (field.type === "select" && !(optionsFor(field, details) || []).includes(value)) {
       throw new AppError(400, `Choose a valid ${field.label} option.`);
     }
     if (field.type === "number") {
-      const number = Number(value);
-      if (!Number.isFinite(number) || number < 1 || number > 100000) {
-        throw new AppError(400, `Enter a valid ${field.label} value.`);
-      }
-      details[field.key] = number;
+      details[field.key] = v.numeric(value, `details.${field.key}`, {
+        min: 1,
+        max: 100000,
+        label: field.label,
+      });
     }
     if (field.type === "date") {
       optionalDate(String(value), "date");
@@ -322,6 +326,17 @@ function requireStaff(req) {
 
 function readNote(value, field = "note", max = 2000) {
   return v.text(value, field, { max, label: "Text" });
+}
+
+function readStaffId(body) {
+  if (!Object.prototype.hasOwnProperty.call(body, "staffId")) {
+    throw new AppError(400, "Choose a staff account or explicitly remove the assignment.");
+  }
+  if (body.staffId === null) return null;
+  if (typeof body.staffId !== "string" || !isValidId(body.staffId)) {
+    throw new AppError(400, "Invalid staff account.");
+  }
+  return body.staffId;
 }
 
 function timelineEntry(req, text, status) {
@@ -579,11 +594,11 @@ async function updateAssignment(req, res) {
   const request = await loadRequest(req, { privateFields: true, allowReassignment: true });
   assertOpen(request);
   const body = v.body(req);
+  const staffId = readStaffId(body);
   let staff = null;
-  if (body.staffId) {
-    if (!isValidId(body.staffId)) throw new AppError(400, "Invalid staff account.");
+  if (staffId !== null) {
     const User = require("../models/User");
-    staff = await User.findOne({ _id: body.staffId, role: "staff", active: true });
+    staff = await User.findOne({ _id: staffId, role: "staff", active: true });
     if (!staff) throw new AppError(400, "Choose an active staff account.");
   }
   const updated = await mutateRequest({
@@ -865,4 +880,6 @@ module.exports = {
   respondQuotation,
   cancelOwn,
   requestMutationFilter,
+  validateServiceDetails,
+  readStaffId,
 };

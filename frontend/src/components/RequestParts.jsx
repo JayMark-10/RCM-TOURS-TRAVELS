@@ -230,6 +230,7 @@ export function ServiceFields({ service, values, onChange }) {
               />
             ) : field.type === "textarea" ? (
               <Textarea
+                required={field.required !== false}
                 maxLength={500}
                 value={values[field.key] ?? ""}
                 onChange={(event) =>

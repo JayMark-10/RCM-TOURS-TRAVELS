@@ -14,6 +14,7 @@ const { newToken, hashToken } = require("../utils/tokens");
 const { parseCookies } = require("../utils/cookies");
 const { assertSafeKeys, escapeRegex } = require("../utils/sanitize");
 const v = require("../utils/validate");
+const { validateServiceDetails, readStaffId } = require("../controllers/requests");
 const { errorHandler } = require("../middleware/errorHandler");
 const { sendActivationCode } = require("../services/email");
 const { configureLocalDns } = require("../utils/localDns");
@@ -617,4 +618,42 @@ test("full-name and Philippine mobile validators enforce accepted formats", () =
     assert.throws(() => v.philippineMobile(phone), /11-digit Philippine mobile/i);
   }
   assert.equal(v.philippineMobile("", "phone", { optional: true }), "");
+});
+
+test("numeric validation rejects coercible non-numbers and keeps business bounds", () => {
+  assert.equal(v.numeric("12.50", "amount", { min: 0.01, max: 100000000, label: "payment amount" }), 12.5);
+  assert.equal(v.numeric(1e3, "amount", { min: 0.01, max: 100000000, label: "payment amount" }), 1000);
+  for (const value of [true, false, null, "", "   ", "0x10", "Infinity", {}, []]) {
+    assert.throws(
+      () => v.numeric(value, "amount", { min: 0.01, max: 100000000, label: "payment amount" }),
+      /valid payment amount/i,
+    );
+  }
+  assert.throws(() => v.numeric(100000001, "amount", { min: 0.01, max: 100000000, label: "payment amount" }), /valid payment amount/i);
+});
+
+test("dynamic request fields enforce their configured input types", () => {
+  const service = { fields: [
+    { key: "travellers", label: "Travellers", type: "number", required: true },
+    { key: "destination", label: "Destination", type: "text", required: true },
+    { key: "depart", label: "Departure", type: "date", required: true },
+  ] };
+  const valid = { travellers: "2", destination: "Cebu", depart: "2027-01-10" };
+  validateServiceDetails(service, valid);
+  assert.equal(valid.travellers, 2);
+  for (const details of [
+    { travellers: true, destination: "Cebu", depart: "2027-01-10" },
+    { travellers: "2", destination: 2, depart: "2027-01-10" },
+    { travellers: "2", destination: "Cebu", depart: true },
+  ]) {
+    assert.throws(() => validateServiceDetails(service, details), /valid/i);
+  }
+});
+
+test("request assignment only clears when staffId is explicitly null", () => {
+  assert.equal(readStaffId({ staffId: null }), null);
+  assert.equal(readStaffId({ staffId: "507f1f77bcf86cd799439011" }), "507f1f77bcf86cd799439011");
+  for (const body of [{}, { staffId: "" }, { staffId: false }, { staffId: [] }]) {
+    assert.throws(() => readStaffId(body), /staff account|assignment/i);
+  }
 });

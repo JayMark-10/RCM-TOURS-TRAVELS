@@ -107,16 +107,20 @@ export function Profile() {
   const [phone, setPhone] = useState(user.phone ?? "")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
+  const [fieldErrors, setFieldErrors] = useState({})
 
   async function handleSubmit(event) {
     event.preventDefault()
     setError("")
+    setFieldErrors({})
     if (!isValidFullName(name)) {
       setError(FULL_NAME_ERROR)
+      setFieldErrors({ name: FULL_NAME_ERROR })
       return
     }
     if (!isValidPhilippineMobile(phone)) {
       setError(PHILIPPINE_MOBILE_ERROR)
+      setFieldErrors({ phone: PHILIPPINE_MOBILE_ERROR })
       return
     }
     setSaving(true)
@@ -142,13 +146,15 @@ export function Profile() {
           onSubmit={handleSubmit}
         >
           <Field label="Full name">
-            <Input required maxLength={120} title={FULL_NAME_ERROR} value={name} onChange={(event) => setName(event.target.value)} />
+            <Input required maxLength={120} title={FULL_NAME_ERROR} value={name} aria-invalid={Boolean(fieldErrors.name)} aria-describedby={fieldErrors.name ? "profile-name-error" : undefined} onChange={(event) => { setName(event.target.value); if (fieldErrors.name) setError(""); setFieldErrors((current) => ({ ...current, name: "" })) }} />
+            {fieldErrors.name && <span id="profile-name-error" className="text-sm text-red-700">{fieldErrors.name}</span>}
           </Field>
           <Field label="Email">
             <Input required type="email" maxLength={254} value={email} onChange={(event) => setEmail(event.target.value)} />
           </Field>
           <Field label="Mobile number">
-            <Input type="tel" inputMode="numeric" title={PHILIPPINE_MOBILE_ERROR} value={phone} onChange={(event) => setPhone(event.target.value)} />
+            <Input type="tel" inputMode="numeric" title={PHILIPPINE_MOBILE_ERROR} value={phone} aria-invalid={Boolean(fieldErrors.phone)} aria-describedby={fieldErrors.phone ? "profile-phone-error" : undefined} onChange={(event) => { setPhone(event.target.value); if (fieldErrors.phone) setError(""); setFieldErrors((current) => ({ ...current, phone: "" })) }} />
+            {fieldErrors.phone && <span id="profile-phone-error" className="text-sm text-red-700">{fieldErrors.phone}</span>}
           </Field>
           {error && <p className="sm:col-span-2 text-sm text-red-700" role="alert">{error}</p>}
           <div className="sm:col-span-2">
