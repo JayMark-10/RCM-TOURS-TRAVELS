@@ -1,7 +1,7 @@
 
 "use strict";
 
-const dns = require("node:dns");
+const { configureLocalDns } = require("./utils/localDns");
 const { loadEnv } = require("./config/env");
 const { connectDb, mongoose } = require("./config/db");
 const { createApp } = require("./app");
@@ -66,11 +66,7 @@ function shutdown(signal) {
 async function main() {
   const cfg = loadEnv();
 
-  // Work around the local Windows DNS issue during development.
-  // Production deployments use the host's normal DNS configuration.
-  if (cfg.nodeEnv !== "production") {
-    dns.setServers(["8.8.8.8", "8.8.4.4"]);
-  }
+  configureLocalDns(cfg);
 
   await connectDb(cfg.mongoUri);
   await ensureDefaultServices();

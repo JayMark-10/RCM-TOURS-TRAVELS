@@ -11,6 +11,12 @@ const userSchema = new mongoose.Schema(
     activationTokenExpiresAt: { type: Date, default: null, select: false },
     activationCodeRequestedAt: { type: Date, default: null, select: false },
     activationCodeAttempts: { type: Number, default: 0, select: false },
+    // Existing accounts default to verified for the rollout migration. New
+    // customer registrations explicitly set false until they redeem a token.
+    emailVerified: { type: Boolean, default: true },
+    emailVerificationTokenHash: { type: String, default: null, select: false },
+    emailVerificationExpiresAt: { type: Date, default: null, select: false },
+    verificationEmailSentAt: { type: Date, default: null, select: false },
     role: { type: String, enum: ["customer", "staff", "admin"], required: true },
     active: { type: Boolean, default: true },
     canAssign: { type: Boolean, default: false },

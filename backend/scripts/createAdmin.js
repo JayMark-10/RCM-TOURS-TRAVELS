@@ -6,6 +6,7 @@ const readline = require("readline");
 const bcrypt = require("bcryptjs");
 const { loadEnv } = require("../config/env");
 const { connectDb, mongoose } = require("../config/db");
+const { configureLocalDns } = require("../utils/localDns");
 const User = require("../models/User");
 const v = require("../utils/validate");
 
@@ -17,10 +18,13 @@ function askHidden(question) {
   });
 }
 
-(async () => {
-  const cfg = loadEnv();
-  await connectDb(cfg.mongoUri);
+async function main() {
+  let connected = false;
   try {
+    const cfg = loadEnv();
+    configureLocalDns(cfg);
+    await connectDb(cfg.mongoUri);
+    connected = true;
     if (await User.exists({ role: "admin" })) throw new Error("An administrator already exists. Refusing to create another.");
     const email = v.email(process.env.ADMIN_EMAIL, "ADMIN_EMAIL");
     const name = v.text(process.env.ADMIN_NAME || "Administrator", "ADMIN_NAME", { max: 120 });
@@ -31,9 +35,17 @@ function askHidden(question) {
     await User.create({ name, email, passwordHash: await bcrypt.hash(p1, 12), role: "admin", canAssign: true });
     console.log("Administrator account created.");
   } catch (e) {
-    console.error("Failed:", e.fields ? Object.values(e.fields).join(" ") : e.message);
+    let safeMessage = e.message;
+    if (e.fields) safeMessage = Object.values(e.fields).join(" ");
+    else if (e.code === "MONGO_TRANSACTIONS_REQUIRED") safeMessage = e.message;
+    else if (/^(?:Mongoose|Mongo)/.test(e.name || "")) {
+      safeMessage = "Could not connect to MongoDB. Check network access, the database allowlist, and DNS resolver settings.";
+    }
+    console.error("Failed:", safeMessage);
     process.exitCode = 1;
   } finally {
-    await mongoose.disconnect();
+    if (connected) await mongoose.disconnect().catch(() => {});
   }
-})();
+}
+
+main();

@@ -12,6 +12,16 @@ function authLimiter(cfg) {
   });
 }
 
+function verificationResendLimiter() {
+  return rateLimit({
+    windowMs: 60 * 60 * 1000,
+    limit: 5,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    message: { error: "Too many verification requests. Please try again later." },
+  });
+}
+
 function apiLimiter() {
   return rateLimit({
     windowMs: 60 * 1000,
@@ -42,4 +52,4 @@ function uploadLimiter() {
   });
 }
 
-module.exports = { authLimiter, apiLimiter, paymentReportLimiter, uploadLimiter };
+module.exports = { authLimiter, verificationResendLimiter, apiLimiter, paymentReportLimiter, uploadLimiter };

@@ -15,7 +15,8 @@ const { parseCookies } = require("../utils/cookies");
 const { assertSafeKeys, escapeRegex } = require("../utils/sanitize");
 const v = require("../utils/validate");
 const { errorHandler } = require("../middleware/errorHandler");
-const { sendActivationCode, createSmtpTransport } = require("../services/email");
+const { sendActivationCode, sendVerificationEmail, createSmtpTransport } = require("../services/email");
+const { configureLocalDns } = require("../utils/localDns");
 const {
   centsToMoney,
   moneyToCents,
@@ -453,6 +454,28 @@ test("activation email mock receives its recipient and does not disclose codes f
   assert.equal(sent, true);
   assert.equal(deliveredTo, "customer@example.com");
   assert.equal(deliveredCode, "654321");
+});
+
+test("verification email mock receives the one-time token without needing live SMTP", async () => {
+  let sent = null;
+  const ok = await sendVerificationEmail({
+    sendVerificationEmail: async (to, token) => { sent = { to, token }; return true; },
+  }, "customer@example.com", "opaque-one-time-token");
+  assert.equal(ok, true);
+  assert.deepEqual(sent, { to: "customer@example.com", token: "opaque-one-time-token" });
+});
+
+test("local DNS workaround matches server startup and is skipped in production", () => {
+  const dns = require("node:dns");
+  const original = dns.getServers();
+  try {
+    configureLocalDns({ nodeEnv: "development" });
+    assert.deepEqual(dns.getServers(), ["8.8.8.8", "8.8.4.4"]);
+    configureLocalDns({ nodeEnv: "production" });
+    assert.deepEqual(dns.getServers(), ["8.8.8.8", "8.8.4.4"]);
+  } finally {
+    dns.setServers(original);
+  }
 });
 
 test("config refuses weak production settings", () => {

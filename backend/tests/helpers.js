@@ -3,11 +3,13 @@ const { createApp } = require("../app");
 
 const ORIGIN = "http://localhost:5173";
 let testActivationCode = "";
+let testVerificationToken = "";
 const baseCfg = {
   nodeEnv: "test", isProd: false, port: 0, mongoUri: "", clientOrigin: ORIGIN, cookieDomain: undefined, trustProxy: 0,
   sessionIdleMs: 30 * 60 * 1000, sessionAbsoluteMs: 8 * 3600 * 1000, customerKeyMs: 7 * 86400000, staffKeyMs: 48 * 3600000,
   authRateMax: 100000, paymentReportMax: 100000, maxFailedLogins: 5, lockoutMs: 15 * 60 * 1000,
   sendEmail: async (_to, code) => { testActivationCode = code; return true; },
+  sendVerificationEmail: async (_to, token) => { testVerificationToken = token; return true; },
 };
 
 async function startServer(over = {}) {
@@ -34,4 +36,4 @@ function client(url) {
   return { call, setCookie: (c) => { cookie = c; }, getCookie: () => cookie };
 }
 
-module.exports = { startServer, client, ORIGIN, getTestActivationCode: () => testActivationCode };
+module.exports = { startServer, client, ORIGIN, getTestActivationCode: () => testActivationCode, getTestVerificationToken: () => testVerificationToken };

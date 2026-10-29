@@ -1,6 +1,6 @@
 
 import { useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 import { Button, Field, Input, Select } from "../../components/ui"
 import { Logo } from "../../layouts/PublicLayout"
 import { apiRequest } from "../../services/api"
@@ -77,10 +77,14 @@ export function SignIn() {
 
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  const [unverifiedEmail, setUnverifiedEmail] = useState("")
+  const [resendMessage, setResendMessage] = useState("")
 
   async function handleSubmit(event) {
     event.preventDefault()
     setError("")
+      setUnverifiedEmail("")
+      setResendMessage("")
     setLoading(true)
 
     const formData = new FormData(event.currentTarget)
@@ -107,6 +111,23 @@ export function SignIn() {
       })
     } catch (requestError) {
       setError(getErrorMessage(requestError))
+      if (requestError.status === 403) setUnverifiedEmail(String(formData.get("email") || ""))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function resendVerification() {
+    setLoading(true)
+    setResendMessage("")
+    try {
+      const result = await apiRequest("/api/auth/resend-verification", {
+        method: "POST",
+        body: JSON.stringify({ email: unverifiedEmail }),
+      })
+      setResendMessage(result.message || "If an unverified account exists, a link will arrive shortly.")
+    } catch (requestError) {
+      setResendMessage(getErrorMessage(requestError))
     } finally {
       setLoading(false)
     }
@@ -161,6 +182,12 @@ export function SignIn() {
           Create an account
         </button>
       </p>
+      {unverifiedEmail && <div className="mt-4 space-y-2 text-center">
+        <button type="button" className="text-sm font-semibold text-blue disabled:opacity-60" disabled={loading} onClick={resendVerification}>
+          {loading ? "Requesting link..." : "Resend verification link"}
+        </button>
+        {resendMessage && <p role="status" className="text-sm text-muted">{resendMessage}</p>}
+      </div>}
     </AuthFrame>
   )
 }
@@ -173,6 +200,8 @@ export function Register() {
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
   const [activationRequested, setActivationRequested] = useState(false)
+  const [registeredEmail, setRegisteredEmail] = useState("")
+  const [verificationDeliveryAccepted, setVerificationDeliveryAccepted] = useState(false)
 
   async function handleRegister(event) {
     event.preventDefault()
@@ -229,6 +258,11 @@ export function Register() {
       })
 
       if (!result.user || !result.user.role) {
+        if (result.verificationRequired === true) {
+          setRegisteredEmail(String(formData.get("email") || ""))
+          setVerificationDeliveryAccepted(result.deliveryAccepted === true)
+          return
+        }
         throw new Error("The server returned an invalid account response.")
       }
 
@@ -272,7 +306,13 @@ export function Register() {
       title="Create your account"
       sub="Register to submit and track service requests."
     >
-      <form className="space-y-4" onSubmit={handleRegister}>
+      {registeredEmail ? <div className="space-y-4 rounded-xl border border-emerald-200 bg-emerald-50 p-5 text-sm text-emerald-950">
+        <h2 className="text-lg font-semibold">Check your email</h2>
+        {verificationDeliveryAccepted
+          ? <p>Your account is ready. A verification message was accepted by the email service for <strong>{registeredEmail}</strong>. Check your inbox before signing in. The link expires after 24 hours.</p>
+          : <p>Your account is ready, but email delivery is unavailable right now. You can request a verification link from the sign-in page after email delivery is configured.</p>}
+        <Button type="button" variant="outline" className="w-full" onClick={() => navigate("/signin")}>Go to sign in</Button>
+      </div> : <form className="space-y-4" onSubmit={handleRegister}>
         <Field label="Account type">
           <Select
             value={accountType}
@@ -419,7 +459,42 @@ export function Register() {
             Sign in
           </button>
         </p>
-      </form>
+      </form>}
     </AuthFrame>
   )
+}
+
+export function VerifyEmail() {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const token = new URLSearchParams(location.hash.slice(1)).get("token") || ""
+  const [loading, setLoading] = useState(false)
+  const [message, setMessage] = useState("")
+  const [verified, setVerified] = useState(false)
+
+  async function verify() {
+    setLoading(true)
+    setMessage("")
+    try {
+      const result = await apiRequest("/api/auth/verify-email", {
+        method: "POST",
+        body: JSON.stringify({ token }),
+      })
+      setVerified(true)
+      setMessage(result.message || "Your email is verified. You can now sign in.")
+      navigate("/verify-email", { replace: true })
+    } catch (error) {
+      setMessage(getErrorMessage(error))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return <AuthFrame title="Verify your email" sub="Confirm your email address to finish setting up your customer account.">
+    {!token ? <p role="alert" className="text-sm text-red">This verification link is missing its token. Request a new link from the sign-in page.</p> : <div className="space-y-4">
+      <Button type="button" className="w-full" disabled={loading || verified} onClick={verify}>{loading ? "Verifying..." : verified ? "Email verified" : "Verify email address"}</Button>
+      {message && <p role={verified ? "status" : "alert"} className={`text-sm ${verified ? "text-emerald-800" : "text-red"}`}>{message}</p>}
+      {verified && <Button type="button" variant="outline" className="w-full" onClick={() => navigate("/signin")}>Continue to sign in</Button>}
+    </div>}
+  </AuthFrame>
 }

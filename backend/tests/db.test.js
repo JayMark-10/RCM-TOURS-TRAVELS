@@ -19,7 +19,7 @@ const skip = URI
   ? false
   : "set TEST_MONGODB_URI to run database tests";
 
-const { startServer, client, getTestActivationCode } = require("./helpers");
+const { startServer, client, getTestActivationCode, getTestVerificationToken } = require("./helpers");
 const { connectDb, mongoose } = require("../config/db");
 
 const User = require("../models/User");
@@ -503,13 +503,35 @@ test(
     });
 
     assert.equal(customer.status, 201);
-    assert.equal(customer.json.user.role, "customer");
+    assert.equal(customer.json.verificationRequired, true);
+    assert.equal(customer.cookie, "");
 
     const publicUser = await User.findOne({ email: "public@x.co" });
 
     assert.equal(publicUser.role, "customer");
     assert.notEqual(publicUser.active, false);
     assert.equal(publicUser.canAssign, false);
+    assert.equal(publicUser.emailVerified, false);
+
+    assert.equal((await login(client(srv.url), "public@x.co")).status, 403);
+    const token = getTestVerificationToken();
+    assert.ok(token);
+    assert.equal((await User.findById(publicUser._id).select("+emailVerificationTokenHash")).emailVerificationTokenHash, hashToken(token));
+    assert.equal((await c.call("POST", "/api/auth/verify-email", { token: "invalid-token" })).status, 400);
+    const verified = await c.call("POST", "/api/auth/verify-email", { token });
+    assert.equal(verified.status, 200);
+    assert.equal((await login(client(srv.url), "public@x.co")).status, 200);
+    assert.equal((await c.call("POST", "/api/auth/verify-email", { token })).status, 400);
+
+    const expiring = await User.create({ name: "Expiring", email: "expired-verification@x.co", passwordHash: await bcrypt.hash(PW, 4), role: "customer", emailVerified: false, emailVerificationTokenHash: hashToken("expired-token"), emailVerificationExpiresAt: new Date(Date.now() - 1000) });
+    assert.equal((await c.call("POST", "/api/auth/verify-email", { token: "expired-token" })).status, 400);
+    const resend = await c.call("POST", "/api/auth/resend-verification", { email: "expired-verification@x.co" });
+    assert.equal(resend.status, 202);
+    const resentToken = getTestVerificationToken();
+    assert.notEqual(resentToken, token);
+    assert.equal((await User.findById(expiring._id).select("+emailVerificationTokenHash")).emailVerificationTokenHash, hashToken(resentToken));
+    assert.equal((await c.call("POST", "/api/auth/resend-verification", { email: "expired-verification@x.co" })).status, 202);
+    assert.equal(getTestVerificationToken(), resentToken);
 
     assert.ok(
       await SecurityEvent.exists({ type: "key_rejected" })

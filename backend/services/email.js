@@ -62,4 +62,27 @@ async function sendActivationCode(cfg, to, code) {
   }
 }
 
-module.exports = { sendActivationCode, createSmtpTransport, logSmtpFailure };
+async function sendVerificationEmail(cfg, to, token) {
+  if (typeof cfg.sendVerificationEmail === "function") return cfg.sendVerificationEmail(to, token);
+
+  const transport = createSmtpTransport(cfg);
+  if (!transport) return false;
+  try {
+    const link = `${cfg.clientOrigin}/verify-email#token=${encodeURIComponent(token)}`;
+    await transport.sendMail({
+      from: cfg.emailFrom,
+      to,
+      subject: "Verify your RCM Tours and Travels email",
+      text: `Please verify your email address by opening this link within 24 hours:\n\n${link}\n\nIf you did not create this account, you can ignore this email.`,
+    });
+    console.info("[email] SMTP relay accepted an email verification message.");
+    return true;
+  } catch (error) {
+    logSmtpFailure("verification delivery", error);
+    return false;
+  } finally {
+    transport.close();
+  }
+}
+
+module.exports = { sendActivationCode, sendVerificationEmail, createSmtpTransport, logSmtpFailure };

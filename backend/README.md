@@ -8,12 +8,13 @@ Node 22+, Express 5, MongoDB (Mongoose 9). No new dependencies beyond the origin
 3. This PC's MongoDB Server 8.2.6 is configured as the single-node replica set `rcmDevRs` and runs as the Windows service `MongoDB`. The active config is `C:\Program Files\MongoDB\Server\8.2\bin\mongod.cfg`, the existing data directory is `C:\Program Files\MongoDB\Server\8.2\data`, and MongoDB listens on `127.0.0.1:27017`. The replica set was initialized and verified as `PRIMARY`; its data directory, database contents, authentication, and loopback binding were preserved. A timestamped configuration backup is at `C:\Program Files\MongoDB\Server\8.2\bin\mongod.cfg.bak-20261028-125732`. Do not initialize the replica set again or reset/move the existing data.
    - To check or start the service, use `Get-Service MongoDB` or `Start-Service MongoDB` in PowerShell. Starting the service or changing its configuration may require an elevated PowerShell window.
    - In MongoDB Compass, connect to host `127.0.0.1`, port `27017`, replica set `rcmDevRs`, and database `rcm_dev`. Use the existing authentication settings if Compass requests credentials; do not put passwords in shell commands.
-4. Create the first admin once if the database does not already have one:
+4. Create the first admin once if the database does not already have one. `create-admin` refuses if any admin exists and prompts for the password without echoing it. In local non-production mode it uses the same Google DNS resolver workaround as backend startup for MongoDB Atlas SRV lookup. Check that the `.env` targets the intended database before running it; the command does not print the URI or password:
    ```powershell
    $env:ADMIN_EMAIL = 'you@example.com'
    npm run create-admin
    Remove-Item Env:ADMIN_EMAIL
    ```
+   To verify an existing production admin without changing data, use an authenticated, read-only MongoDB client and query `users` for `{ role: "admin" }`, projecting only `role` and `active`. Do not paste database URIs or credentials into shared terminals or chat. The script intentionally stops when an administrator already exists; it does not reset or reveal an account password.
 5. Start the backend and frontend in separate PowerShell windows:
    ```powershell
    Set-Location F:\rcm-tours-and-travels-new\backend
@@ -40,6 +41,8 @@ Request data and workflow actions are stored in MongoDB. Authenticated customers
 
 Customers activate a passwordless walk-in record by requesting a six-digit code at registration with the recorded email. The code expires after 10 minutes, is stored as a hash, allows at most five attempts, and can be resent once per minute. Successful activation sets the password on the existing customer record, preserving its ID and request history. Email is sent through Gmail SMTP using Nodemailer. Configure the SMTP variables below with a Google App Password (never an ordinary Gmail password). If configuration is missing or delivery fails, the API does not claim that an email was sent.
 
+New customer registrations require a separate single-use, 24-hour email verification link before login. Tokens are stored as hashes; resend responses do not disclose whether an account exists and are limited per account and per IP. Existing accounts (including administrators and staff) remain verified by the schema default; newly activated walk-in customers are verified because their activation code proves control of the email address. Staff registration remains invitation-only and is not forced through the customer verification gate.
+
 For Gmail, set these in `backend/.env`: `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=465`, `SMTP_SECURE=true`, `SMTP_USER=your-sender@gmail.com`, `SMTP_PASS=your-16-character-google-app-password`, and `EMAIL_FROM=your-sender@gmail.com`. Enable Google 2-Step Verification, create an App Password for this project, restart the backend, then request a code and check the sender account's delivery logs and recipient inbox/spam folder. Never commit `.env` or share the App Password. `backend/.env.example` contains placeholders only.
 
 From the `backend` directory, run `npm run test:email -- recipient@example.com` in development to verify SMTP authentication and send a harmless test message. The command refuses to run when `NODE_ENV=production`, includes no activation code, and reports only safe transport diagnostics. A successful SMTP result means Gmail accepted the message for delivery; it does not guarantee inbox placement. No real SMTP credentials are included in the test suite.
@@ -56,7 +59,9 @@ Request documents are signature-checked, stored outside the public directory at 
 
 ## Local Configuration
 
-The backend requires `MONGODB_URI` and `CLIENT_ORIGIN`. For local use, the API defaults to port `4000`, and Vite serves the frontend on port `5173` and proxies `/api` to the backend. Optional local settings include `PORT`, `TRUST_PROXY` (normally unset/zero), and `COOKIE_DOMAIN` (normally unset for localhost). Session/rate settings are `SESSION_IDLE_MINUTES`, `SESSION_ABSOLUTE_HOURS`, `CUSTOMER_KEY_DAYS`, `STAFF_KEY_HOURS`, `AUTH_RATE_MAX`, `MAX_FAILED_LOGINS`, and `LOCKOUT_MINUTES`. Optional email activation uses `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, and `EMAIL_FROM`. Keep `.env` private.
+The backend requires `MONGODB_URI` and `CLIENT_ORIGIN`. For local use, the API defaults to port `4000`, and Vite serves the frontend on port `5173` and proxies `/api` to the backend. Optional local settings include `PORT`, `TRUST_PROXY` (normally unset/zero), and `COOKIE_DOMAIN` (normally unset). Session/rate settings are `SESSION_IDLE_MINUTES`, `SESSION_ABSOLUTE_HOURS`, `CUSTOMER_KEY_DAYS`, `STAFF_KEY_HOURS`, `AUTH_RATE_MAX`, `MAX_FAILED_LOGINS`, and `LOCKOUT_MINUTES`. Email uses `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, and `EMAIL_FROM`; keep these values private and verify SMTP delivery with `npm run test:email -- recipient@example.com` before enabling customer registration.
+
+For Cloudflare Pages production, set the Pages environment variable `API_ORIGIN=https://rcm-tours-and-travels.onrender.com`. Leave `VITE_API_URL` unset so browser requests use the same-origin `/api` Pages Function proxy. Set the Render backend's `CLIENT_ORIGIN=https://rcm-tours-and-travels.pages.dev`, `COOKIE_SAME_SITE=lax`, and `COOKIE_DOMAIN` unset. The proxy keeps the existing `HttpOnly`, `Secure`, host-only session cookie first-party on mobile browsers; CORS and the origin/JSON CSRF guard still apply to the Pages origin. Add the deployed custom domain to both values if the site uses one. No token, password, or SMTP credential belongs in the frontend environment.
 
 Local MongoDB must run as the `rcmDevRs` single-node replica set. A standalone server is intentionally rejected. The `Payment` schema enforces globally unique nonempty transaction references per payment method. A read-only check on this PC's current development database found the new unique index already present and zero duplicate `(method, transactionReference)` groups; the former request-scoped unique index is also still present. No index migration was run.
 
@@ -69,7 +74,7 @@ Payment reports remain pending until staff verifies them. Staff can record cash 
 Service definitions are stored in MongoDB and drive request field validation, permitted checklist entries, and quotation eligibility. Existing service records are preserved at startup. The one-time `node scripts/updateDocumentService.js` migration enables quotations for the existing Document Assistance service and updates its form definition. System settings persist public company details, payment instructions, and the customer-registration switch. Security-event responses omit email addresses, IP addresses, hashes, and secrets.
 
 ## Main endpoints
-- Auth: `POST /api/auth/login|register|logout`, `GET /api/auth/me`
+- Auth: `POST /api/auth/login|register|logout|verify-email|resend-verification`, `POST /api/auth/activation-code`, `GET /api/auth/me`
 - Invitations: `POST/GET /api/invitations`, `DELETE /api/invitations/:id`
 - Requests: `GET/POST /api/requests`, `GET /api/requests/:id`, `PATCH /api/requests/:id/status|assignment|checklist`, `POST /api/requests/:id/messages|notes|cancel`, and quotation `PUT/POST` actions under `/api/requests/:id/quotation`
 - Users: `GET /api/users`, `GET /api/users/directory`, `PATCH /api/users/me`, `PATCH /api/users/:id/active`, `PATCH /api/users/:id/assignment-permission`

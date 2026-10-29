@@ -1,4 +1,6 @@
-const API_BASE_URL = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "")
+// Keep production requests on the Pages origin so session cookies are
+// first-party on mobile browsers. Vite proxies this path during development.
+const API_BASE_URL = ""
 
 const SERVER_ERROR_MESSAGE =
   "The server ran into a problem. Please try again in a moment."
